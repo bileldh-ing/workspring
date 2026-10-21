@@ -201,3 +201,22 @@ export async function switchMode(db: Executor, actor: Actor, mode: Mode) {
   if (!actor.capabilities.includes(mode)) throw new AppError("FORBIDDEN", `Add the ${mode} capability first`);
   await db.update(users).set({ activeMode: mode, updatedAt: new Date() }).where(eq(users.id, actor.userId));
 }
+
+/** Loads an Actor directly by id (used by tests and trusted server code, never from user input). */
+export async function getActorByUserId(db: Executor, userId: string): Promise<Actor | null> {
+  const rows = await db
+    .select({ user: users, capability: userCapabilities.capability })
+    .from(users)
+    .leftJoin(userCapabilities, eq(userCapabilities.userId, users.id))
+    .where(and(eq(users.id, userId), eq(users.status, "active")));
+  if (rows.length === 0) return null;
+  const u = rows[0].user;
+  return {
+    userId: u.id,
+    email: u.email,
+    displayName: u.displayName,
+    capabilities: rows.map((r) => r.capability).filter((c): c is Capability => !!c),
+    activeMode: u.activeMode,
+    emailVerified: !!u.emailVerifiedAt,
+  };
+}
