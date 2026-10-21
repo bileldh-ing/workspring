@@ -1,0 +1,10 @@
+packages:
+  - "."
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
+  "@embedded-postgres/linux-arm64": true
+  "@embedded-postgres/linux-x64": true
+  embedded-postgres: true
+  sharp: true
+  "@node-rs/argon2": true
