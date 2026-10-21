@@ -34,7 +34,11 @@ export async function startEmbeddedPostgres(opts: { dataDir: string; port: numbe
     if (!alive) fs.rmSync(pid);
     else throw new Error(`Postgres already running (pid ${owner}) on ${dataDir}`);
   }
-  await pg.start();
+  try {
+    await pg.start();
+  } catch (e) {
+    throw new Error(`PostgreSQL failed to start on port ${opts.port} (${e ?? "no detail"}). Is the port already in use? Set WS_PG_PORT to another port.`);
+  }
   try {
     await pg.createDatabase(opts.database);
   } catch (e) {
