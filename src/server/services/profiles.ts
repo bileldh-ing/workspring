@@ -125,7 +125,10 @@ export async function searchTalent(db: Executor, p: TalentSearch) {
   if (p.level) where.push(sql`fp.experience_level = ${p.level}`);
   if (p.maxRate !== undefined) where.push(sql`fp.hourly_rate_minor <= ${p.maxRate * 100} and fp.currency in ('USD','EUR')`);
   const whereSql = sql.join(where, sql` and `);
-  const rank = q ? sql`ts_rank(fp.search_tsv, websearch_to_tsquery('english', ${q}))` : sql`0`;
+  // No literal ORDER BY constant: `order by 0` would be read as a column position.
+  const order = q
+    ? sql`ts_rank(fp.search_tsv, websearch_to_tsquery('english', ${q})) desc, fp.published_at desc nulls last`
+    : sql`fp.published_at desc nulls last`;
   const offset = (p.page - 1) * TALENT_PAGE_SIZE;
   const rows = await db.execute<{
     user_id: string; slug: string; display_name: string; title: string; overview: string;
@@ -135,7 +138,7 @@ export async function searchTalent(db: Executor, p: TalentSearch) {
            fp.availability, fp.experience_level, u.is_demo, count(*) over()::int as total
     from freelancer_profiles fp join users u on u.id = fp.user_id
     where ${whereSql}
-    order by ${rank} desc, fp.published_at desc nulls last
+    order by ${order}
     limit ${TALENT_PAGE_SIZE} offset ${offset}`);
   const ids = rows.map((r) => r.user_id);
   const sk = ids.length

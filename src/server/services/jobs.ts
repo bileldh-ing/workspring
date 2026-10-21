@@ -146,9 +146,9 @@ export async function searchJobs(db: Executor, p: JobSearch) {
   // minBudget is in major units of 2-decimal currencies; TND jobs (3 decimals) are compared on their own scale.
   if (p.minBudget !== undefined)
     where.push(sql`j.budget_max_minor >= ${p.minBudget} * (case when j.currency = 'TND' then 1000 else 100 end)`);
-  const rank = q ? sql`ts_rank(j.search_tsv, websearch_to_tsquery('english', ${q}))` : sql`0`;
+  const rank = sql`ts_rank(j.search_tsv, websearch_to_tsquery('english', ${q}))`;
   const order =
-    p.sort === "newest" || (!q && p.sort === "relevance")
+    p.sort === "newest" || (!q && p.sort === "relevance") // relevance needs a query; never emit `order by 0`
       ? sql`j.published_at desc`
       : p.sort === "budget_desc"
         ? sql`j.budget_max_minor desc nulls last, j.published_at desc`

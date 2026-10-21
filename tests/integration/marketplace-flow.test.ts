@@ -25,6 +25,10 @@ describe("genuine first path: profile → job → search → proposal → messag
     freelancer = (await getActorByUserId(db, freelancer.userId))!;
     const talent = await searchTalent(db, { q: "postgresql", skill: "", level: "", page: 1 });
     expect(talent.results.map((r) => r.user_id)).toContain(freelancer.userId);
+    // Browsing with no keywords (default page) and filter-only queries must work too.
+    expect((await searchTalent(db, { q: "", skill: "", level: "", page: 1 })).total).toBe(1);
+    expect((await searchTalent(db, { q: "", skill: "typescript", level: "intermediate", maxRate: 50, page: 1 })).total).toBe(1);
+    expect((await searchTalent(db, { q: "", skill: "", level: "", maxRate: 10, page: 1 })).total).toBe(0);
     const pub = await getPublicProfile(db, talent.results[0].slug);
     expect(pub).not.toHaveProperty("email");
     expect(pub!.completedContracts).toBe(0);
@@ -36,6 +40,9 @@ describe("genuine first path: profile → job → search → proposal → messag
     const found = await searchJobs(db, { q: "invoicing dashboard", category: "web-dev", skill: "react", type: "fixed", level: "", minBudget: 1000, sort: "relevance", page: 1 });
     expect(found.results.map((r) => r.id)).toEqual([job.id]);
     expect((await searchJobs(db, { q: "invoicing", category: "", skill: "", type: "hourly", level: "", sort: "relevance", page: 1 })).total).toBe(0);
+    for (const sort of ["relevance", "newest", "budget_desc"] as const) {
+      expect((await searchJobs(db, { q: "", category: "", skill: "", type: "", level: "", sort, page: 1 })).total).toBe(1);
+    }
 
     // Proposal
     const proposal = await submitProposal(db, freelancer, { jobId: job.id, coverLetter: LONG("I have shipped three invoicing dashboards in React."), amount: "1200", durationEstimate: "1_to_4_weeks" });
