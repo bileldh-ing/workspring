@@ -58,7 +58,7 @@ export async function resetPasswordAction(_: ActionState, fd: FormData): Promise
   });
 }
 
-export async function resendVerificationAction(_: ActionState): Promise<ActionState> {
+export async function resendVerificationAction(): Promise<ActionState> {
   return runAction(async () => {
     const r = await auth.resendVerification(getDb(), await requireActor());
     return { ok: true, message: r.alreadyVerified ? "Your email is already verified." : "Verification email queued." };

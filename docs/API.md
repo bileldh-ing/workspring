@@ -46,3 +46,11 @@ Route handlers in `src/app/api/**` are thin wrappers over the service layer (the
 Conversation creation is UI-only in R1 (server action `openConversationAction`, client from a proposal).
 
 **Audit / events**: job, proposal, offer, contract and milestone transitions write event rows with actor; auth and profile actions write `audit_log`.
+
+### Freelancer profile
+
+| Method & path | Auth / permission | Body | Notes |
+|---|---|---|---|
+| GET `/api/freelancer-profile` | freelancer | — | caller's profile or `null` |
+| PUT `/api/freelancer-profile` | freelancer | `{title,overview(50–5000),hourlyRate,currency,timezone,availability,experienceLevel,categorySlug,skills[]}` | creates as draft / updates |
+| POST `/api/freelancer-profile/publish` | freelancer; verified email to publish | `{publish:boolean}` | published profiles appear in talent search and at `/freelancers/[slug]` |
