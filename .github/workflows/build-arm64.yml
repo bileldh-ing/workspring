@@ -1,0 +1,36 @@
+name: Standalone build (linux-arm64)
+
+# Manual: produces a Next.js standalone bundle for ARM64 Linux hosts (e.g. Graviton, Ampere, Raspberry Pi 5,
+# or a memory-constrained ARM dev box that can't run `next build` itself). Run with: node server.js
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Assemble standalone bundle
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+          echo "${GITHUB_SHA}" > .next/standalone/BUILD_SHA
+          tar -czf standalone-arm64.tgz -C .next standalone
+      - uses: actions/upload-artifact@v4
+        with:
+          name: standalone-linux-arm64
+          path: standalone-arm64.tgz
+          retention-days: 7
