@@ -1,19 +1,21 @@
 import { adminAction } from "@/app/actions/r2";
 import { ActionForm } from "@/components/action-form";
 import { NoPermission } from "@/components/admin-bits";
-import { Card, EmptyState, Input, PageHeader, Select, StatusBadge, formatDate } from "@/components/ui";
+import { Card, DoneNotice, EmptyState, Input, PageHeader, Select, StatusBadge, formatDate } from "@/components/ui";
 import { getDb } from "@/db/client";
 import { staffContext } from "@/lib/staff";
 import { listReports } from "@/server/services/admin";
 
 export const metadata = { title: "Reports" };
 
-export default async function Reports() {
+export default async function Reports({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { actor, can } = await staffContext("/admin/reports");
   if (!can("reports.handle")) return <NoPermission perm="reports.handle" />;
   const rows = await listReports(getDb(), actor);
+  const { done } = await searchParams;
   return (
     <>
+      <DoneNotice done={done} messages={{ reviewing: "Report marked as under review.", actioned: "Report closed as actioned. The reporter was notified.", dismissed: "Report dismissed. The reporter was notified." }} />
       <PageHeader title="Abuse reports" subtitle="Reporter identity and details are visible to authorized staff only." />
       {rows.length === 0 ? <EmptyState title="No reports" /> : rows.map(({ r, reporterName }) => (
         <Card key={r.id} className="space-y-1 text-sm" data-testid="report-item">

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { milestoneAction, simulateProviderAction } from "@/app/actions/marketplace";
 import { ActionForm } from "@/components/action-form";
-import { Card, Field, Notice, PageHeader, StatusBadge, TestModeBadge, Textarea, formatDate, statusLabel } from "@/components/ui";
+import { Card, DoneNotice, Field, Notice, PageHeader, StatusBadge, TestModeBadge, Textarea, formatDate, statusLabel } from "@/components/ui";
 import { getDb } from "@/db/client";
 import { isAppError } from "@/domain/errors";
 import { formatMoney, splitRelease } from "@/domain/money";
@@ -37,7 +37,7 @@ const MILESTONE_HELP: Record<string, string> = {
 
 const DISPUTABLE = ["funded", "submitted", "revision_requested"];
 
-export default async function Workroom({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ started?: string; webhook?: string }> }) {
+export default async function Workroom({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ started?: string; webhook?: string; done?: string }> }) {
   const actor = await requireActor();
   const { id } = await params;
   const sp = await searchParams;
@@ -77,6 +77,7 @@ export default async function Workroom({ params, searchParams }: { params: Promi
         subtitle={<span className="inline-flex flex-wrap items-center gap-2"><StatusBadge status={c.status} /> {w.clientName} (client) · {w.freelancerName} (freelancer) · {c.contractType === "hourly" ? `${formatMoney(c.hourlyRateMinor ?? 0, c.currency)}/hr` : `${formatMoney(c.totalMinor, c.currency)} fixed`} · started {formatDate(c.startedAt)}</span>}
         actions={provider.mode === "test" ? <TestModeBadge /> : null}
       />
+      <DoneNotice done={sp.done} messages={{ review: "Review submitted. It becomes visible when the other party reviews too, or when the 14-day window closes.", dispute_opened: "Dispute opened. The milestone is on hold until support reviews it.", dispute_withdrawn: "Dispute withdrawn." }} />
       {sp.started ? <Notice tone="success">Contract started. The client funds milestone 1 next.</Notice> : null}
       {sp.webhook ? <Notice tone={sp.webhook === "applied" ? "success" : "warn"}>Provider webhook processed: {sp.webhook}</Notice> : null}
       {!provider.configured ? <Notice tone="warn" title="Payments are not configured">{provider.unavailableReason} Funding and release are disabled; nothing is simulated.</Notice> : null}

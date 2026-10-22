@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { orderAction, reviewAction, simulateOrderProviderAction } from "@/app/actions/r2";
 import { ActionForm } from "@/components/action-form";
 import { FileInput, FileList, Stars } from "@/components/r2";
-import { Card, Field, Notice, PageHeader, Select, StatusBadge, TestModeBadge, Textarea, formatDate } from "@/components/ui";
+import { Card, DoneNotice, Field, Notice, PageHeader, Select, StatusBadge, TestModeBadge, Textarea, formatDate } from "@/components/ui";
 import { getDb } from "@/db/client";
 import { isAppError } from "@/domain/errors";
 import { formatMoney } from "@/domain/money";
@@ -55,6 +55,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
         subtitle={<span className="inline-flex flex-wrap items-center gap-2"><StatusBadge status={o.status} /> You are the {role}. {role === "buyer" ? `Seller: ${d.sellerName}` : `Buyer: ${d.buyerName}`}{d.listingSlug ? <Link className="text-brand underline" href={`/services/${d.listingSlug}`}>service page</Link> : null}</span>}
         actions={(o.snapshot as { paymentMode?: string }).paymentMode === "test" ? <TestModeBadge /> : null}
       />
+      <DoneNotice done={sp.done} messages={{ cancel: "Order canceled.", requirements: "Requirements submitted. The delivery clock has started.", deliver: "Delivery sent.", revision: "Revision requested.", approve: "Approved. Payment release requested from the provider.", review: "Review submitted. It becomes visible when the other party reviews too, or when the 14-day window closes." }} />
       {sp.webhook ? <Notice tone={sp.webhook === "applied" ? "success" : "warn"}>Provider webhook processed: {sp.webhook}.</Notice> : null}
       <Notice>{STATUS_HELP[o.status] ?? o.status}</Notice>
 

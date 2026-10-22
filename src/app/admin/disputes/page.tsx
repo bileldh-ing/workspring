@@ -1,7 +1,7 @@
 import { adminAction } from "@/app/actions/r2";
 import { ActionForm } from "@/components/action-form";
 import { NoPermission } from "@/components/admin-bits";
-import { Card, EmptyState, Field, PageHeader, StatusBadge, Textarea, formatDate } from "@/components/ui";
+import { Card, DoneNotice, EmptyState, Field, PageHeader, StatusBadge, Textarea, formatDate } from "@/components/ui";
 import { getDb } from "@/db/client";
 import { formatMoney } from "@/domain/money";
 import { staffContext } from "@/lib/staff";
@@ -9,12 +9,14 @@ import { listDisputesForStaff } from "@/server/services/disputes";
 
 export const metadata = { title: "Disputes" };
 
-export default async function Disputes() {
+export default async function Disputes({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { actor, can } = await staffContext("/admin/disputes");
   if (!can("disputes.resolve")) return <NoPermission perm="disputes.resolve" />;
   const rows = await listDisputesForStaff(getDb(), actor);
+  const { done } = await searchParams;
   return (
     <>
+      <DoneNotice done={done} messages={{ refund_requested: "Refund requested from the provider. It completes on the verified webhook (Payments & webhooks).", release_allowed: "Resolved: the client can now release payment." }} />
       <PageHeader title="Disputes" subtitle="Resolve by letting the client release payment, or by refunding through the provider (completes only on the verified refund webhook)." />
       {rows.length === 0 ? <EmptyState title="No disputes" /> : rows.map((r) => (
         <Card key={r.d.id} className="space-y-2 text-sm">

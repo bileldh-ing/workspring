@@ -1,16 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { signIn } from "./helpers";
 
-const PW = "demo-password-2026";
 const shots = "docs/screenshots";
 
-async function signIn(page: Page, email: string) {
-  await page.context().clearCookies();
-  await page.goto("/signin");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PW);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL(/\/app/);
-}
 const clean = (u: string) => u.replace(/\?.*$/, "");
 
 test("services: browse → tier checkout → provider webhook → requirements → deliver → approve → completed", async ({ page }) => {
@@ -30,13 +22,13 @@ test("services: browse → tier checkout → provider webhook → requirements �
   await page.getByLabel(/brand assets/).fill("https://example.test/atlas-brand");
   await page.getByLabel(/target audience/).fill("Warehouse managers evaluating robots");
   await page.getByRole("button", { name: "Submit requirements and start order" }).click();
-  await expect(page.getByText("Requirements submitted. The delivery clock has started.")).toBeVisible();
+  await expect(page.getByTestId("done-notice")).toContainText("Requirements submitted. The delivery clock has started.");
 
   await signIn(page, "amira@demo.workspring.test");
   await page.goto(orderUrl);
   await page.getByLabel("Delivery note").fill("Hero section delivered with a call to action and tests.");
   await page.getByRole("button", { name: "Send delivery" }).click();
-  await expect(page.getByText("Delivery sent.")).toBeVisible();
+  await expect(page.getByTestId("done-notice")).toContainText("Delivery sent.");
 
   await signIn(page, "client-atlas@demo.workspring.test");
   await page.goto(orderUrl);
@@ -139,7 +131,7 @@ test("admin: non-staff get 404; freelancer submits a service; moderator approves
   await expect(item).toBeVisible();
   await page.screenshot({ path: `${shots}/05-admin-moderation.png`, fullPage: true });
   await item.getByRole("button", { name: "Approve and publish" }).click();
-  await expect(page.getByText("Moderation decision recorded.")).toBeVisible();
+  await expect(page.getByTestId("done-notice")).toContainText("service approved and published");
   // moderator role cannot read the audit log
   await page.goto("/admin/audit");
   await expect(page.getByText("Not available for your staff role")).toBeVisible();

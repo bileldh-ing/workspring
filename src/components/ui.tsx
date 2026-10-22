@@ -174,3 +174,9 @@ export function timeAgo(d: Date | string | null | undefined) {
   for (const [n, u] of units) if (s >= n) return `${Math.floor(s / n)} ${u}${Math.floor(s / n) > 1 ? "s" : ""} ago`;
   return "just now";
 }
+
+/** Success notice driven by a `?done=<key>` query param (set by server actions that redirect after a state change). */
+export function DoneNotice({ done, messages }: { done?: string; messages: Record<string, string> }) {
+  const m = done ? messages[done] : undefined;
+  return m ? <div role="status" data-testid="done-notice"><Notice tone="success">{m}</Notice></div> : null;
+}

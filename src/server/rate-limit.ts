@@ -41,7 +41,8 @@ export function memoryRateLimiter(): RateLimiter {
 }
 
 export const RATE_LIMITS = {
-  login: { limit: 8, windowSeconds: 600 },
+  login: { limit: 8, windowSeconds: 600 }, // per account
+  loginIp: { limit: 30, windowSeconds: 600 }, // per IP (shared NATs/offices need headroom)
   register: { limit: 5, windowSeconds: 3600 },
   passwordReset: { limit: 5, windowSeconds: 3600 },
   upload: { limit: 30, windowSeconds: 600 },

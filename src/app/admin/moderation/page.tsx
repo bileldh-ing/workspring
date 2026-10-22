@@ -1,7 +1,7 @@
 import { adminAction } from "@/app/actions/r2";
 import { ActionForm } from "@/components/action-form";
 import { NoPermission } from "@/components/admin-bits";
-import { Card, DemoBadge, EmptyState, Field, PageHeader, Textarea, timeAgo } from "@/components/ui";
+import { Card, DemoBadge, DoneNotice, EmptyState, Field, PageHeader, Textarea, timeAgo } from "@/components/ui";
 import { getDb } from "@/db/client";
 import { formatMoney } from "@/domain/money";
 import { staffContext } from "@/lib/staff";
@@ -9,14 +9,16 @@ import { getServiceForStaff, listPendingServices } from "@/server/services/catal
 
 export const metadata = { title: "Service moderation" };
 
-export default async function Moderation() {
+export default async function Moderation({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { can } = await staffContext("/admin/moderation");
   if (!can("moderation.services")) return <NoPermission perm="moderation.services" />;
   const db = getDb();
   const pending = await listPendingServices(db);
   const full = await Promise.all(pending.map((p) => getServiceForStaff(db, p.l.id)));
+  const { done } = await searchParams;
   return (
     <>
+      <DoneNotice done={done} messages={{ approved: "Moderation decision recorded: service approved and published.", changes_requested: "Moderation decision recorded: changes requested from the seller." }} />
       <PageHeader title="Service moderation" subtitle="Approve to publish, or request changes with a note the seller will see. Decisions are audited." />
       {full.length === 0 ? <EmptyState title="Queue is empty">No services are waiting for review.</EmptyState> : full.map((s, i) => (
         <Card key={s.id} className="space-y-2 text-sm" data-testid="moderation-item">

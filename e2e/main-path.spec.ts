@@ -1,16 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { signIn } from "./helpers";
 
-const PW = "demo-password-2026";
 const shots = "docs/screenshots";
 
-async function signIn(page: Page, email: string) {
-  await page.context().clearCookies();
-  await page.goto("/signin");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PW);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL(/\/app/);
-}
 
 test("main path through the UI: post → apply → message → offer → accept → fund → deliver → approve → release", async ({ page }) => {
   const title = `E2E dashboard build ${Date.now()}`;

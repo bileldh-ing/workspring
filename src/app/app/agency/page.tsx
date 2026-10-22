@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { agencyAction } from "@/app/actions/r2";
 import { ActionForm } from "@/components/action-form";
-import { Card, EmptyState, Field, Input, Notice, PageHeader, Select, StatusBadge, Textarea, formatDate } from "@/components/ui";
+import { Card, DoneNotice, EmptyState, Field, Input, Notice, PageHeader, Select, StatusBadge, Textarea, formatDate } from "@/components/ui";
 import { getDb } from "@/db/client";
 import { agencyCan, canRemove } from "@/domain/agency";
 import { requireActor } from "@/lib/session";
@@ -24,6 +24,7 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <PageHeader title="Agency" subtitle="Agencies group freelancers under one public profile. Every member keeps their own account, contracts and earnings; nobody shares credentials." />
+      <DoneNotice done={sp.done} messages={{ create: "Agency created.", accept: "You joined the agency.", decline: "Invitation declined.", revoke: "Invitation revoked.", remove: "Member removed. Their own account, contracts and history are unaffected." }} />
       {invites.length ? (
         <Card className="space-y-2">
           <h2 className="font-semibold">Invitations for you</h2>

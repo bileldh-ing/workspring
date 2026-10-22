@@ -31,7 +31,7 @@ export async function loginAction(_: ActionState, fd: FormData): Promise<ActionS
   return runAction(async () => {
     // Shared (DB-backed) limiter keyed by account and by IP.
     await enforceRateLimit(getDb(), "login", `acct:${str(fd, "email")}`);
-    await enforceRateLimit(getDb(), "login", `ip:${await clientIp()}`);
+    await enforceRateLimit(getDb(), "loginIp", await clientIp());
     const { token } = await auth.login(getDb(), { email: str(fd, "email"), password: str(fd, "password") }, await userAgent());
     await setSessionCookie(token);
     redirect(safeNext(str(fd, "next")));

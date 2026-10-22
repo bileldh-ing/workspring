@@ -228,8 +228,7 @@ export async function disputeAction(_: ActionState, fd: FormData): Promise<Actio
     const contractId = id(fd, "contractId");
     if (str(fd, "op") === "withdraw") await disputes.withdrawDispute(getDb(), actor, id(fd, "disputeId"));
     else await disputes.openDispute(getDb(), actor, { milestoneId: str(fd, "milestoneId"), reason: str(fd, "reason") });
-    revalidatePath(`/app/contracts/${contractId}`);
-    return { ok: true, message: str(fd, "op") === "withdraw" ? "Dispute withdrawn." : "Dispute opened. The milestone is on hold until support reviews it." };
+    redirect(`/app/contracts/${contractId}?done=${str(fd, "op") === "withdraw" ? "dispute_withdrawn" : "dispute_opened"}`);
   });
 }
 
@@ -238,8 +237,7 @@ export async function reviewAction(_: ActionState, fd: FormData): Promise<Action
     const kind = str(fd, "kind") === "order" ? "order" : "contract";
     const target = id(fd, "targetId");
     await reviews.submitReview(getDb(), await requireActor(), { kind, id: target }, { rating: str(fd, "rating"), body: str(fd, "body") });
-    revalidatePath(kind === "order" ? `/app/orders/${target}` : `/app/contracts/${target}`);
-    return { ok: true, message: "Review submitted. It becomes visible when the other party reviews too, or when the 14-day window closes." };
+    redirect(kind === "order" ? `/app/orders/${target}?done=review` : `/app/contracts/${target}?done=review`);
   });
 }
 
@@ -301,7 +299,6 @@ export async function orderAction(_: ActionState, fd: FormData): Promise<ActionS
     const db = getDb();
     const oid = id(fd, "orderId");
     const op = str(fd, "op");
-    let message = "Saved.";
     switch (op) {
       case "pay": {
         const r = await orders.resumeOrderPayment(db, actor, oid);
@@ -310,35 +307,30 @@ export async function orderAction(_: ActionState, fd: FormData): Promise<ActionS
       }
       case "cancel":
         await orders.cancelUnpaidOrder(db, actor, oid);
-        message = "Order canceled.";
         break;
       case "requirements": {
         const answers: Record<string, string> = {};
         for (const [k, v] of fd.entries()) if (k.startsWith("req_") && typeof v === "string") answers[k.slice(4)] = v;
         await orders.submitRequirements(db, actor, oid, answers);
-        message = "Requirements submitted. The delivery clock has started.";
         break;
       }
       case "deliver": {
         const d = await orders.deliverOrder(db, actor, oid, { note: str(fd, "note") });
         const files = filesFrom(fd);
         if (files.length) await storeAttachments(db, actor, "order_delivery", d.id, files);
-        message = "Delivery sent.";
         break;
       }
       case "revision":
         await orders.requestOrderRevision(db, actor, oid, { note: str(fd, "note") });
-        message = "Revision requested.";
         break;
       case "approve":
         await orders.approveOrder(db, actor, oid);
-        message = "Approved. Payment release requested from the provider.";
         break;
       default:
         throw new AppError("VALIDATION", "Unknown action");
     }
     revalidatePath(`/app/orders/${oid}`);
-    return { ok: true, message };
+    redirect(`/app/orders/${oid}?done=${op}`);
   });
 }
 
@@ -410,7 +402,8 @@ export async function agencyAction(_: ActionState, fd: FormData): Promise<Action
         throw new AppError("VALIDATION", "Unknown action");
     }
     revalidatePath("/app/agency");
-    return { ok: true, message };
+    if (op === "invite" || op === "update" || op === "role") return { ok: true, message };
+    redirect(`/app/agency?done=${op}`);
   });
 }
 
@@ -460,13 +453,13 @@ export async function adminAction(_: ActionState, fd: FormData): Promise<ActionS
       case "moderate": {
         await admin.requireStaff(db, actor, "moderation.services");
         await catalog.moderateService(db, actor.userId, id(fd, "serviceId"), str(fd, "decision") === "approve" ? "approve" : "request_changes", str(fd, "note") || undefined);
-        message = "Moderation decision recorded.";
-        break;
+        revalidatePath("/admin", "layout");
+        redirect(`/admin/moderation?done=${str(fd, "decision") === "approve" ? "approved" : "changes_requested"}`);
       }
       case "report":
         await admin.handleReport(db, actor, id(fd, "reportId"), str(fd, "status") as "reviewing" | "actioned" | "dismissed", str(fd, "note"));
-        message = "Report updated.";
-        break;
+        revalidatePath("/admin", "layout");
+        redirect(`/admin/reports?done=${str(fd, "status")}`);
       case "review_visibility": {
         await admin.requireStaff(db, actor, "moderation.reviews");
         await reviews.setReviewHidden(db, actor.userId, id(fd, "reviewId"), str(fd, "hidden") === "1", str(fd, "note"));
@@ -475,8 +468,8 @@ export async function adminAction(_: ActionState, fd: FormData): Promise<ActionS
       }
       case "resolve_dispute": {
         const r = await disputes.resolveDispute(db, actor, id(fd, "disputeId"), str(fd, "outcome") === "refund" ? "refund" : "release", { note: str(fd, "note") });
-        message = r.intentId ? `Refund requested from the provider (intent ${r.intentId.slice(0, 8)}…). It completes on the verified webhook.` : "Resolved: the client can now release payment.";
-        break;
+        revalidatePath("/admin", "layout");
+        redirect(`/admin/disputes?done=${r.intentId ? "refund_requested" : "release_allowed"}`);
       }
       case "simulate_refund": {
         const r = await simulateTestProviderOutcome(db, actor, id(fd, "intentId"), str(fd, "outcome") === "failed" ? "failed" : "succeeded");
