@@ -11,6 +11,7 @@ export const SESSION_COOKIE = "ws_session";
 /** Current signed-in actor (memoized per request), or null. */
 export const getActor = cache(async (): Promise<Actor | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) return null; // no DB round-trip for anonymous (and statically prerendered) requests
   return getActorBySessionToken(getDb(), token);
 });
 
