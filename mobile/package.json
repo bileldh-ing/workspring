@@ -1,0 +1,19 @@
+{
+  "name": "workspring-mobile",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Capacitor shell that wraps the WorkSpring PWA for Android/iOS store builds. The web app is loaded from CAP_SERVER_URL.",
+  "scripts": {
+    "add:android": "cap add android",
+    "add:ios": "cap add ios",
+    "sync": "cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  }
+}

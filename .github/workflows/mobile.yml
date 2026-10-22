@@ -1,0 +1,84 @@
+name: Mobile (Capacitor)
+
+# Wraps the deployed PWA in a Capacitor shell and builds an Android debug APK on every run.
+# A signed release AAB is built only when the signing secrets exist (see docs/MOBILE.md).
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: "HTTPS URL of the deployed web app the shell loads"
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - "public/manifest.webmanifest"
+      - ".github/workflows/mobile.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android APK (debug) + optional signed AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      CAP_SERVER_URL: ${{ inputs.server_url || vars.CAP_SERVER_URL || 'https://workspring.fly.dev' }}
+      CAP_APP_ID: ${{ vars.CAP_APP_ID || 'test.workspring.app' }}
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - name: Install Capacitor
+        run: npm install --no-audit --no-fund
+      - name: Generate the Android project
+        run: |
+          npx cap add android
+          npx cap sync android
+      - name: App icons from the PWA icon
+        run: |
+          for d in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+            cp ../public/icons/icon-192.png android/app/src/main/res/$d/ic_launcher.png
+            cp ../public/icons/icon-192.png android/app/src/main/res/$d/ic_launcher_round.png
+          done
+      - name: Build debug APK
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workspring-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+      - name: Decode upload keystore
+        if: env.HAS_KEYSTORE == 'true'
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/upload.jks"
+      - name: Build signed release AAB
+        if: env.HAS_KEYSTORE == 'true'
+        run: >
+          npx cap build android --androidreleasetype AAB
+          --keystorepath "$RUNNER_TEMP/upload.jks"
+          --keystorepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          --keystorealias "${{ secrets.ANDROID_KEY_ALIAS }}"
+          --keystorealiaspass "${{ secrets.ANDROID_KEY_PASSWORD }}"
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_KEYSTORE == 'true'
+        with:
+          name: workspring-release-aab
+          path: mobile/android/app/build/outputs/bundle/release/*.aab
+          retention-days: 30
