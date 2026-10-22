@@ -6,7 +6,7 @@ WorkSpring is a responsive PWA (manifest, icons, service worker with an offline 
 
 Triggers: manual (`workflow_dispatch`, optional `server_url` input) and pushes to `main` that touch `mobile/**`, the manifest or the workflow.
 
-1. Node 22, Temurin JDK 21, Android SDK (`android-actions/setup-android`).
+1. Node 22, Temurin JDK 21, the Android SDK preinstalled on `ubuntu-latest`.
 2. `npm install` in `mobile/` (Capacitor 7 CLI/core/android/ios).
 3. `npx cap add android && npx cap sync android` (the native project is generated in CI, never committed).
 4. Copies the PWA icon into the launcher mipmaps.
