@@ -13,7 +13,7 @@ describe("console and profile read models", () => {
   it("publishedServicesBy lists only published listings with their starter tier", async () => {
     const seller = await publishedFreelancer(db);
     const mod = await makeStaff(db, ["moderator"]);
-    const input = { title: "Accessible landing page build", categorySlug: "web-dev", summary: "A fast and accessible landing page for small teams", description: "I will build an accessible landing page with tests, documentation and a short handover call for your team.", currency: "USD", tiers: { starter: tier("S", "100"), standard: tier("M", "200"), advanced: tier("L", "300") } };
+    const input = { title: "Accessible landing page build", categorySlug: "web-dev", summary: "A fast and accessible landing page for small teams", description: "I will build an accessible landing page with tests, documentation and a short handover call for your team.", currency: "USD", tiers: { starter: tier("Small", "100"), standard: tier("Medium", "200"), advanced: tier("Large", "300") } };
     const draft = await createService(db, seller, input);
     const pub = await createService(db, seller, { ...input, title: "Accessible landing page build v2" });
     await ownerTransition(db, seller, pub.id, "pending_review");
