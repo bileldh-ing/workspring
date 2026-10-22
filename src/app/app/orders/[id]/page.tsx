@@ -79,17 +79,17 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
           <h2 className="mb-2 font-semibold">Requirements</h2>
           <ActionForm action={orderAction} submitLabel="Submit requirements and start order">
             {idField}<input type="hidden" name="op" value="requirements" />
-            {snap.requirements.length === 0 ? <p className="text-sm text-muted">The seller didn't ask any questions. Submit to start the delivery clock.</p> : null}
+            {snap.requirements.length === 0 ? <p className="text-sm text-muted">The seller didn’t ask any questions. Submit to start the delivery clock.</p> : null}
             {snap.requirements.map((r) => (
               <Field key={r.seq} label={`${r.seq}. ${r.prompt}${r.required ? "" : " (optional)"}`} name={`req_${r.seq}`}><Textarea name={`req_${r.seq}`} rows={2} /></Field>
             ))}
           </ActionForm>
         </Card>
       ) : null}
-      {role === "seller" && o.status === "requirements_pending" ? <Notice>Waiting for the buyer's requirements.</Notice> : null}
+      {role === "seller" && o.status === "requirements_pending" ? <Notice>Waiting for the buyer’s requirements.</Notice> : null}
 
       {d.answers.length ? (
-        <Card><h2 className="mb-2 font-semibold">Buyer's answers</h2><dl className="space-y-2 text-sm">{d.answers.map((a) => <div key={a.id}><dt className="text-muted">{a.prompt}</dt><dd className="whitespace-pre-wrap">{a.answer}</dd></div>)}</dl></Card>
+        <Card><h2 className="mb-2 font-semibold">Buyer’s answers</h2><dl className="space-y-2 text-sm">{d.answers.map((a) => <div key={a.id}><dt className="text-muted">{a.prompt}</dt><dd className="whitespace-pre-wrap">{a.answer}</dd></div>)}</dl></Card>
       ) : null}
 
       <Card>

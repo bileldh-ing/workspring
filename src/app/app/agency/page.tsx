@@ -100,7 +100,7 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
                   <Field label="Freelancer's WorkSpring email" name="email"><Input name="email" type="email" required /></Field>
                   <Field label="Role" name="role"><Select name="role" defaultValue="member"><option value="member">Member</option><option value="admin">Admin</option></Select></Field>
                 </div>
-                <p className="text-xs text-muted">We don't reveal whether an email has an account. Invitations expire after 14 days.</p>
+                <p className="text-xs text-muted">We don’t reveal whether an email has an account. Invitations expire after 14 days.</p>
               </ActionForm>
               {view.invites.length ? (
                 <ul className="space-y-1 text-sm">

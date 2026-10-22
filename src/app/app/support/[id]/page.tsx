@@ -27,7 +27,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   return (
     <>
       <PageHeader title={data.ticket.subject} subtitle={<Link href={data.asStaff ? "/admin/support" : "/app/support"} className="text-brand underline">← All tickets</Link>} />
-      {sp.created ? <Notice tone="success">Ticket sent. Support replies here and you'll get a notification.</Notice> : null}
+      {sp.created ? <Notice tone="success">Ticket sent. Support replies here and you’ll get a notification.</Notice> : null}
       <TicketThread data={data} files={files} />
     </>
   );

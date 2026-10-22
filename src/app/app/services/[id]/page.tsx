@@ -38,8 +38,8 @@ export default async function EditService({ params, searchParams }: { params: Pr
   return (
     <>
       <PageHeader title={s.title} subtitle={<span className="inline-flex items-center gap-2">Status: <StatusBadge status={s.status} />{s.status === "published" ? <Link className="text-brand underline" href={`/services/${s.slug}`}>View public page</Link> : null}</span>} />
-      {sp.created ? <Notice tone="success">Draft saved. Submit it for review when it's ready.</Notice> : null}
-      {s.status === "pending_review" ? <Notice>Waiting for a moderator. You'll get a notification with the decision.</Notice> : null}
+      {sp.created ? <Notice tone="success">Draft saved. Submit it for review when it’s ready.</Notice> : null}
+      {s.status === "pending_review" ? <Notice>Waiting for a moderator. You’ll get a notification with the decision.</Notice> : null}
       {s.status === "changes_requested" && s.moderationNote ? <Notice tone="warn" title="Changes requested">{s.moderationNote}</Notice> : null}
       {s.status === "published" ? <Notice>Editing a published service sends it back to review before the changes go live.</Notice> : null}
       <div className="flex flex-wrap gap-2">

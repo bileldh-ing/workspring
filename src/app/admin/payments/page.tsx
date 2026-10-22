@@ -28,7 +28,7 @@ export default async function Payments() {
                 <tr key={i.id} className="border-b border-line align-top">
                   <td className="py-1 pr-2">{formatDate(i.createdAt)}</td><td className="pr-2">{i.purpose.replace(/_/g, " ")}</td><td className="pr-2">{formatMoney(i.amountMinor, i.currency)}</td><td className="pr-2">{formatMoney(i.feeMinor, i.currency)}</td><td className="pr-2">{i.mode}</td>
                   <td className="pr-2"><StatusBadge status={i.status} />
-                    {i.purpose === "refund" && i.status === "requires_action" && provider.mode === "test" && can("disputes.resolve") ? (
+                    {i.purpose === "milestone_refund" && i.status === "requires_action" && provider.mode === "test" && can("disputes.resolve") ? (
                       <ActionForm action={adminAction} submitLabel="Simulate refund succeeded" variant="ghost" inline><input type="hidden" name="op" value="simulate_refund" /><input type="hidden" name="intentId" value={i.id} /><input type="hidden" name="outcome" value="succeeded" /></ActionForm>
                     ) : null}
                   </td>

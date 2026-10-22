@@ -88,7 +88,7 @@ export default async function FreelancerProfile({ params }: { params: Promise<{ 
         {isClient ? (
           <Card className="mt-3 space-y-2 text-sm" data-testid="invite-box">
             <h2 className="font-semibold">Invite to a job</h2>
-            {blocked ? <Notice tone="warn">You can't invite this member.</Notice> : openJobs.length === 0 ? (
+            {blocked ? <Notice tone="warn">You can’t invite this member.</Notice> : openJobs.length === 0 ? (
               <p className="text-muted">You have no open jobs. <Link className="text-brand underline" href="/app/jobs/new">Post a job</Link> first.</p>
             ) : (
               <ActionForm action={inviteAction} submitLabel="Send invitation">

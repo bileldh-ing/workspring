@@ -62,7 +62,7 @@ export function ServiceFields({ categories, initial }: { categories: { id: strin
         ))}
       </fieldset>
       <fieldset className="space-y-2">
-        <legend className="text-sm font-semibold">Requirements you'll ask the buyer after payment (optional)</legend>
+        <legend className="text-sm font-semibold">Requirements you’ll ask the buyer after payment (optional)</legend>
         {reqs.map((r, i) => <Input key={i} name="requirement" aria-label={`Requirement ${i + 1}`} placeholder={i === 0 ? "e.g. Link to your brand guidelines" : ""} defaultValue={r} />)}
       </fieldset>
     </>
