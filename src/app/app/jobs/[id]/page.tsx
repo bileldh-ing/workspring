@@ -17,10 +17,10 @@ import { listCategories, listSkills } from "@/server/services/taxonomy";
 export const metadata = { title: "Manage job" };
 const LABEL: Record<string, string> = { open: "Publish", paused: "Pause", closed: "Close job" };
 
-export default async function ManageJob({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string }> }) {
+export default async function ManageJob({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string; status?: string }> }) {
   const actor = await requireActor();
   const { id } = await params;
-  const { created } = await searchParams;
+  const { created, status } = await searchParams;
   const db = getDb();
   let job;
   try {
@@ -40,6 +40,7 @@ export default async function ManageJob({ params, searchParams }: { params: Prom
         actions={job.status !== "draft" ? <Link className="text-sm font-semibold text-brand hover:underline" href={`/jobs/${job.slug}`}>View public page →</Link> : null}
       />
       {created ? <Notice tone="success">Draft saved. Review it below, then publish when ready.</Notice> : null}
+      {status && ["open", "paused", "closed"].includes(status) && !created ? <Notice tone="success">Job is now {status}.</Notice> : null}
       <Card className="flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold">Status actions:</span>
         {transitions.length === 0 ? <span className="text-sm text-muted">Closed jobs can&apos;t be changed.</span> : null}

@@ -82,7 +82,9 @@ export async function transitionJobAction(_: ActionState, fd: FormData): Promise
     if (!["open", "paused", "closed"].includes(to)) throw new AppError("VALIDATION", "Unknown status");
     await jobs.transitionJob(getDb(), await requireActor(), id, to as "open" | "paused" | "closed");
     revalidatePath(`/app/jobs/${id}`);
-    return { ok: true, message: `Job is now ${to}.` };
+    // The status buttons change after a transition, which would unmount this form and drop its message,
+    // so the confirmation travels in the URL instead.
+    redirect(`/app/jobs/${id}?status=${to}`);
   });
 }
 

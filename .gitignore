@@ -8,3 +8,12 @@ test-results
 playwright-report
 next-env.d.ts
 *.tsbuildinfo
+blob-report
+coverage
+.storage
+/android/app/build
+/android/.gradle
+*.apk
+*.aab
+*.keystore
+*.jks

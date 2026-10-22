@@ -50,7 +50,7 @@ test("main path through the UI: post → apply → message → offer → accept 
   await page.goto(proposalUrl.replace(/\?.*$/, ""));
   await page.getByRole("button", { name: "Message freelancer" }).click();
   await page.waitForURL(/\/app\/messages\//);
-  await page.getByLabel("Message").fill("Hi! Could you start on Monday?");
+  await page.getByRole("textbox", { name: "Message" }).fill("Hi! Could you start on Monday?");
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByText("Hi! Could you start on Monday?")).toBeVisible();
   await page.goto(proposalUrl.replace(/\?.*$/, ""));
