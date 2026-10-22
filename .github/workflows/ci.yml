@@ -100,6 +100,7 @@ jobs:
       TEST_PROVIDER_WEBHOOK_SECRET: ci-only-test-webhook-secret-0123456789abcdef
       FILE_URL_SECRET: ci-only-file-url-secret-0123456789abcdefghij
       STORAGE_DIR: /tmp/ws-storage
+      ENABLE_DEV_OUTBOX: "true"
       RATE_LIMIT_DRIVER: memory
     steps:
       - uses: actions/checkout@v4
