@@ -78,3 +78,5 @@ pnpm exec playwright install chromium && pnpm e2e
 |---|---|---|---|
 | `32a5337` | ❌ [39722924041](https://github.com/bileldh-ing/workspring/actions/runs/39722924041) | ✅ | hourly e2e failed (offer page crash) |
 | `fda9fb0` | ✅ [39724354883](https://github.com/bileldh-ing/workspring/actions/runs/39724354883) | ✅ [39724354896](https://github.com/bileldh-ing/workspring/actions/runs/39724354896) | reference run for this page |
+| `1b0e880` | cancelled (superseded by the next push) | ✅ | screenshots + hourly start notice; standalone arm64 build ✅ [39724928380](https://github.com/bileldh-ing/workspring/actions/runs/39724928380) |
+| `d676cd1` | ✅ [39725184850](https://github.com/bileldh-ing/workspring/actions/runs/39725184850) (85 tests, 32/32 HTTP, 4/4 e2e) | ✅ [39725184953](https://github.com/bileldh-ing/workspring/actions/runs/39725184953) | docs; Mobile ✅ [39725191487](https://github.com/bileldh-ing/workspring/actions/runs/39725191487) → `workspring-debug-apk` |
