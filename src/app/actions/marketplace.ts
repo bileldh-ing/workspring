@@ -213,8 +213,8 @@ export async function simulateProviderAction(_: ActionState, fd: FormData): Prom
   return runAction(async () => {
     const outcome = str(fd, "outcome") === "failed" ? "failed" : "succeeded";
     const r = await simulateTestProviderOutcome(getDb(), await requireActor(), str(fd, "intentId"), outcome);
-    const back = str(fd, "back");
-    if (back.startsWith("/app/contracts/")) redirect(`${back}?webhook=${r.outcome}`);
+    const back = r.back;
+    if (/^\/app\/(contracts|orders)\/[0-9a-f-]{36}$/.test(back)) redirect(`${back}?webhook=${r.outcome}`);
     return { ok: true, message: `Webhook processed: ${r.outcome}` };
   });
 }

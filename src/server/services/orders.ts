@@ -99,6 +99,7 @@ export async function submitRequirements(db: DB, actor: Actor, id: string, answe
   return db.transaction(async (tx) => {
     const { o, role } = await lockOrder(tx, actor, id);
     if (role !== "buyer") throw new AppError("FORBIDDEN", "Only the buyer submits requirements");
+    if (o.status !== "requirements_pending") throw new AppError("INVALID_TRANSITION", "Requirements can be submitted once payment is confirmed");
     const reqs = (o.snapshot as { requirements: { seq: number; prompt: string; required: boolean }[] }).requirements;
     const rows = reqs.map((r) => ({ ...r, answer: (answers[String(r.seq)] ?? "").trim().slice(0, 3000) }));
     const missing = rows.filter((r) => r.required && r.answer.length < 2);

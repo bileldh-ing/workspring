@@ -20,7 +20,7 @@ export const ALLOWED: Record<string, { mime: string; magic?: number[][] }> = {
 
 export function sanitizeFileName(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? "file";
-  const cleaned = base.normalize("NFKC").replace(/[^\w.\- ()]+/g, "_").replace(/^\.+/, "").trim().slice(0, 120);
+  const cleaned = base.normalize("NFKC").replace(/[^\p{L}\p{N}_.\- ()]+/gu, "_").replace(/^\.+/, "").trim().slice(0, 120);
   return cleaned || "file";
 }
 

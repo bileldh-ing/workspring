@@ -470,7 +470,7 @@ export async function requestRelease(db: DB, actor: Actor, milestoneId: string, 
 export async function completeContractIfDone(tx: Executor, contractId: string) {
   const ms = await tx.select({ status: milestones.status }).from(milestones).where(eq(milestones.contractId, contractId));
   const live = ms.filter((m) => m.status !== "canceled");
-  if (live.length === 0 || !live.every((m) => m.status === "released")) return false;
+  if (live.length === 0 || !live.every((m) => m.status === "released" || m.status === "refunded")) return false;
   const [c] = await tx.select().from(contracts).where(eq(contracts.id, contractId)).for("update");
   if (c.status !== "active") return false;
   assertTransition(contractMachine, c.status, "completed", "contract");
