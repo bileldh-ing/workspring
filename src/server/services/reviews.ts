@@ -55,12 +55,13 @@ export async function submitReview(db: DB, actor: Actor, t: Target, raw: unknown
 
 /** Reveals reviews whose window has closed (run on read and by the maintenance script). */
 export async function revealExpired(db: Executor, now = new Date()) {
-  const cutoff = new Date(now.getTime() - REVIEW_WINDOW_DAYS * 86400_000);
+  const nowIso = now.toISOString();
+  const cutoff = new Date(now.getTime() - REVIEW_WINDOW_DAYS * 86400_000).toISOString();
   await db.execute(sql`
-    update reviews r set visible_at = ${now}
+    update reviews r set visible_at = ${nowIso}::timestamptz
     where r.visible_at is null and (
-      (r.contract_id is not null and exists (select 1 from contracts c where c.id = r.contract_id and c.ended_at <= ${cutoff})) or
-      (r.order_id is not null and exists (select 1 from service_orders o where o.id = r.order_id and o.completed_at <= ${cutoff})))`);
+      (r.contract_id is not null and exists (select 1 from contracts c where c.id = r.contract_id and c.ended_at <= ${cutoff}::timestamptz)) or
+      (r.order_id is not null and exists (select 1 from service_orders o where o.id = r.order_id and o.completed_at <= ${cutoff}::timestamptz)))`);
 }
 
 export async function reviewStateFor(db: Executor, actor: Actor, t: Target) {

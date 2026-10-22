@@ -107,9 +107,9 @@ export async function addManualEntry(db: DB, actor: Actor, raw: unknown) {
     const { c, role } = await loadHourly(tx, actor, input.contractId, true);
     requireActiveFreelancer(c, role);
     if (!c.allowManualTime) throw new AppError("FORBIDDEN", "This contract doesn't allow manual time. Use the timer.");
-    const startedAt = new Date(`${input.date}T09:00:00.000Z`);
+    const startedAt = new Date(`${input.date}T00:00:00.000Z`);
     if (Number.isNaN(startedAt.getTime())) throw new AppError("VALIDATION", "Invalid date", { date: "Invalid date" });
-    if (startedAt.getTime() > Date.now()) throw new AppError("VALIDATION", "Manual time can't be in the future", { date: "Future date" });
+    if (input.date > new Date().toISOString().slice(0, 10)) throw new AppError("VALIDATION", "Manual time can't be in the future", { date: "Future date" });
     if (startedAt < new Date(weekStartOf(c.startedAt))) throw new AppError("VALIDATION", "Date is before the contract started", { date: "Before contract start" });
     const week = weekStartOf(startedAt);
     if (await weekLocked(tx, c.id, week)) throw new AppError("CONFLICT", "That week's timesheet was already submitted");
