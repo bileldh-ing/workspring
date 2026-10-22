@@ -1,13 +1,19 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
+import { ServiceWorkerRegister } from "@/components/sw-register";
 import { getPaymentProvider } from "@/server/payments";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "WorkSpring: hire independent professionals", template: "%s · WorkSpring" },
   description: "WorkSpring is a freelance marketplace for posting jobs, sending proposals and running milestone contracts.",
+  manifest: "/manifest.webmanifest",
+  icons: { icon: "/icons/icon-192.png", apple: "/icons/icon-192.png" },
+  appleWebApp: { capable: true, title: "WorkSpring", statusBarStyle: "default" },
 };
+
+export const viewport: Viewport = { themeColor: "#1f4fd1", width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const provider = getPaymentProvider();
@@ -36,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/trust" className="hover:text-brand">Trust &amp; payments</Link>
           </div>
         </footer>
+        <ServiceWorkerRegister />
       </body>
     </html>
   );

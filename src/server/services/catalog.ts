@@ -177,3 +177,10 @@ export async function getServiceForStaff(db: Executor, id: string) {
   const ch = await children(db, [id]);
   return { ...l, tiers: ch.tiers.sort(tierOrder), addons: ch.addons, requirements: ch.reqs };
 }
+
+/** Published services by one seller (public profile). */
+export async function publishedServicesBy(db: Executor, userId: string) {
+  const ls = await db.select().from(serviceListings).where(and(eq(serviceListings.freelancerId, userId), eq(serviceListings.status, "published"))).orderBy(desc(serviceListings.publishedAt)).limit(12);
+  const ch = await children(db, ls.map((l) => l.id));
+  return ls.map((l) => ({ ...l, starter: ch.tiers.find((t) => t.listingId === l.id && t.tier === "starter") ?? null }));
+}

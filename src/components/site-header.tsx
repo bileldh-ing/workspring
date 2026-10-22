@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { logoutAction, switchModeAction } from "@/app/actions/auth";
+import { getDb } from "@/db/client";
 import { getActor } from "@/lib/session";
+import { unreadCount } from "@/server/services/notifications";
 import { Logo } from "./logo";
 import { buttonClass } from "./ui";
 
@@ -14,6 +16,7 @@ const publicLinks = [
 
 export async function SiteHeader() {
   const actor = await getActor();
+  const unread = actor ? await unreadCount(getDb(), actor.userId) : 0;
   return (
     <header className="border-b border-line bg-surface">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
@@ -42,6 +45,10 @@ export async function SiteHeader() {
                   </button>
                 </form>
               ) : null}
+              <Link href="/app/notifications" className={buttonClass("ghost", "relative px-2 py-1.5")} aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"} data-testid="header-notifications">
+                <span aria-hidden="true">🔔</span>
+                {unread ? <span className="absolute -right-1 -top-1 rounded-full bg-danger px-1.5 text-[10px] font-bold leading-4 text-white">{unread > 99 ? "99+" : unread}</span> : null}
+              </Link>
               <Link href="/app" className={buttonClass("secondary", "px-3 py-1.5")}>
                 Workspace
               </Link>
