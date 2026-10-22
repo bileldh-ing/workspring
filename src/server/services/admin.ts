@@ -1,6 +1,6 @@
-import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import type { DB, Executor } from "@/db/client";
-import { abuseReports, adminRoles, auditLog, disputes, paymentIntents, providerWebhookEvents, serviceListings, sessions, supportTickets, users } from "@/db/schema";
+import { abuseReports, adminRoles, auditLog, disputes, paymentIntents, providerWebhookEvents, reviews, serviceListings, sessions, supportTickets, users } from "@/db/schema";
 import { type AdminPermission, type AdminRole, requireAdmin } from "@/domain/admin";
 import { AppError } from "@/domain/errors";
 import type { Actor } from "@/domain/permissions";
@@ -115,4 +115,21 @@ export async function auditTrail(db: Executor, actor: Actor) {
     .leftJoin(users, eq(users.id, auditLog.actorId))
     .orderBy(desc(auditLog.createdAt))
     .limit(200);
+}
+
+/** Recent reviews for moderation (moderation.reviews), including not-yet-revealed ones (staff only). */
+export async function reviewsForModeration(db: Executor, actor: Actor) {
+  await requireStaff(db, actor, "moderation.reviews");
+  return db
+    .select({ r: reviews, reviewerName: users.displayName })
+    .from(reviews)
+    .innerJoin(users, eq(users.id, reviews.reviewerId))
+    .orderBy(desc(reviews.createdAt))
+    .limit(100);
+}
+
+export async function rolesForUsers(db: Executor, actor: Actor, ids: string[]) {
+  await requireStaff(db, actor, "users.read");
+  if (!ids.length) return [];
+  return db.select({ userId: adminRoles.userId, role: adminRoles.role }).from(adminRoles).where(inArray(adminRoles.userId, ids));
 }
