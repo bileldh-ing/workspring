@@ -70,7 +70,7 @@ jobs:
               console.log(["### Coverage (src/domain, src/server)", "| metric | % | covered |", "|---|---|---|", ...["lines","statements","functions","branches"].map(row)].join("\n"));
             ' >> "$GITHUB_STEP_SUMMARY"
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage
@@ -138,7 +138,7 @@ jobs:
       - name: Server log
         if: failure()
         run: tail -n 200 server.log
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report
@@ -146,7 +146,7 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 14
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: screenshots
