@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { transitionJobAction, updateJobAction } from "@/app/actions/marketplace";
 import { ActionForm } from "@/components/action-form";
 import { JobFields } from "@/components/job-form";
+import { invitationResponseAction } from "@/app/actions/r2";
+import { listSentInvitations } from "@/server/services/invitations";
 import { budgetText, DURATION_LABELS } from "@/components/labels";
 import { Card, EmptyState, Notice, PageHeader, StatusBadge, formatDate } from "@/components/ui";
 import { getDb } from "@/db/client";
@@ -29,7 +31,7 @@ export default async function ManageJob({ params, searchParams }: { params: Prom
     if (isAppError(e)) notFound();
     throw e;
   }
-  const [proposals, categories, skills] = await Promise.all([listJobProposals(db, actor, id), listCategories(db), listSkills(db)]);
+  const [proposals, categories, skills, invites] = await Promise.all([listJobProposals(db, actor, id), listCategories(db), listSkills(db), listSentInvitations(db, actor, id)]);
   const dec = (v: number | null) => (v !== null && isCurrency(job.currency) ? minorToDecimal(v, job.currency) : "");
   const transitions = jobMachine[job.status];
   return (
@@ -51,6 +53,35 @@ export default async function ManageJob({ params, searchParams }: { params: Prom
           </ActionForm>
         ))}
       </Card>
+
+      {job.questions.length ? (
+        <Card className="text-sm">
+          <h2 className="mb-1 font-semibold">Screening questions</h2>
+          <ol className="list-decimal space-y-0.5 pl-5 text-ink-soft">{job.questions.map((q) => <li key={q.id}>{q.prompt}</li>)}</ol>
+        </Card>
+      ) : null}
+      {invites.length ? (
+        <section aria-labelledby="inv-h">
+          <h2 id="inv-h" className="mb-2 text-lg font-semibold">Invitations sent ({invites.length})</h2>
+          <ul className="space-y-2">
+            {invites.map((r) => (
+              <li key={r.inv.id}>
+                <Card className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                  <span><strong>{r.freelancerName}</strong> · sent {formatDate(r.inv.createdAt)}{r.inv.declineReason ? ` · reason: ${r.inv.declineReason}` : ""}</span>
+                  <span className="flex items-center gap-2">
+                    <StatusBadge status={r.inv.status === "sent" && r.inv.expiresAt < new Date() ? "expired" : r.inv.status} />
+                    {r.inv.status === "sent" ? (
+                      <ActionForm action={invitationResponseAction} submitLabel="Revoke" variant="ghost" inline>
+                        <input type="hidden" name="invitationId" value={r.inv.id} /><input type="hidden" name="op" value="revoke" /><input type="hidden" name="jobId" value={job.id} />
+                      </ActionForm>
+                    ) : null}
+                  </span>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section aria-labelledby="proposals-h">
         <h2 id="proposals-h" className="mb-2 text-lg font-semibold">Proposals ({proposals.length})</h2>
@@ -77,7 +108,7 @@ export default async function ManageJob({ params, searchParams }: { params: Prom
           <div className="mt-4">
             <ActionForm action={updateJobAction} submitLabel="Save changes">
               <input type="hidden" name="jobId" value={job.id} />
-              <JobFields categories={categories} skills={skills} d={{ title: job.title, description: job.description, categorySlug: job.categorySlug, skills: job.skills.map((s) => s.slug), contractType: job.contractType, currency: job.currency, budgetMin: dec(job.budgetMinMinor), budgetMax: dec(job.budgetMaxMinor), scope: job.scope, experienceLevel: job.experienceLevel, locationNote: job.locationNote ?? "" }} />
+              <JobFields categories={categories} skills={skills} d={{ title: job.title, description: job.description, categorySlug: job.categorySlug, skills: job.skills.map((s) => s.slug), contractType: job.contractType, currency: job.currency, budgetMin: dec(job.budgetMinMinor), budgetMax: dec(job.budgetMaxMinor), scope: job.scope, experienceLevel: job.experienceLevel, locationNote: job.locationNote ?? "", screeningQuestions: job.questions.map((q) => q.prompt) }} />
             </ActionForm>
           </div>
         </details>

@@ -6,7 +6,7 @@ type Skill = { id: string; slug: string; name: string; categoryId: string | null
 type Cat = { id: string; slug: string; name: string };
 export type JobDefaults = {
   title?: string; description?: string; categorySlug?: string; skills?: string[]; contractType?: string; currency?: string;
-  budgetMin?: string; budgetMax?: string; scope?: string; experienceLevel?: string; locationNote?: string;
+  budgetMin?: string; budgetMax?: string; scope?: string; experienceLevel?: string; locationNote?: string; screeningQuestions?: string[];
 };
 
 /** Job post fields (server component; rendered inside an ActionForm). */
@@ -28,7 +28,7 @@ export function JobFields({ categories, skills, d = {} }: { categories: Cat[]; s
       </Field>
       <SkillPicker categories={categories} skills={skills} selected={d.skills ?? []} max={10} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Contract type" name="contractType" hint="Hourly contracts can be posted, but hourly offers/time tracking arrive in a later phase.">
+        <Field label="Contract type" name="contractType" hint="Hourly contracts use a weekly limit, a web timer and weekly timesheets the client approves.">
           <Select name="contractType" defaultValue={d.contractType ?? "fixed"}>
             <option value="fixed">Fixed price (milestones)</option>
             <option value="hourly">Hourly</option>
@@ -57,6 +57,13 @@ export function JobFields({ categories, skills, d = {} }: { categories: Cat[]; s
       <Field label="Location or time-zone preference (optional)" name="locationNote" hint="Only if genuinely needed, e.g. “4h overlap with CET”.">
         <Input name="locationNote" defaultValue={d.locationNote} maxLength={200} />
       </Field>
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">Screening questions (optional, up to 5)</legend>
+        <p className="text-xs text-muted">Every applicant must answer these. They can&apos;t be changed once proposals arrive.</p>
+        {Array.from({ length: 5 }, (_, i) => (
+          <Input key={i} name="screeningQuestion" id={`screeningQuestion-${i}`} aria-label={`Screening question ${i + 1}`} placeholder={i === 0 ? "e.g. Which similar projects have you delivered?" : `Question ${i + 1}`} defaultValue={d.screeningQuestions?.[i] ?? ""} maxLength={300} />
+        ))}
+      </fieldset>
     </>
   );
 }

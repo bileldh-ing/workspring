@@ -13,6 +13,7 @@ import * as messaging from "@/server/services/messaging";
 import { simulateTestProviderOutcome } from "@/server/services/payments";
 import * as profiles from "@/server/services/profiles";
 import * as proposals from "@/server/services/proposals";
+import { filesFrom, storeAttachments } from "@/server/services/files";
 
 const profileFrom = (fd: FormData) => ({
   title: str(fd, "title"),
@@ -38,6 +39,7 @@ const jobFrom = (fd: FormData) => ({
   scope: str(fd, "scope"),
   experienceLevel: str(fd, "experienceLevel"),
   locationNote: str(fd, "locationNote") || undefined,
+  screeningQuestions: strs(fd, "screeningQuestion").map((q) => q.trim()).filter(Boolean),
 });
 
 // ---------- profile
@@ -96,7 +98,10 @@ export async function submitProposalAction(_: ActionState, fd: FormData): Promis
       coverLetter: str(fd, "coverLetter"),
       amount: str(fd, "amount"),
       durationEstimate: str(fd, "durationEstimate"),
+      answers: Object.fromEntries([...fd.entries()].filter(([k, v]) => k.startsWith("answer_") && typeof v === "string").map(([k, v]) => [k.slice(7), v as string])),
     });
+    const files = filesFrom(fd);
+    if (files.length) await storeAttachments(getDb(), await requireActor(), "proposal", p.id, files);
     redirect(`/app/proposals/${p.id}?submitted=1`);
   });
 }
@@ -147,12 +152,14 @@ export async function createOfferAction(_: ActionState, fd: FormData): Promise<A
     const milestones = titles
       .map((title, i) => ({ title: title.trim(), amount: (amounts[i] ?? "").trim(), dueDate: (dues[i] ?? "").trim() }))
       .filter((m) => m.title || m.amount);
-    const offer = await contracts.createOffer(getDb(), await requireActor(), {
-      proposalId: str(fd, "proposalId"),
-      title: str(fd, "title"),
-      description: str(fd, "description"),
-      milestones,
-    });
+    const hourlyRate = str(fd, "hourlyRate");
+    const offer = await contracts.createOffer(
+      getDb(),
+      await requireActor(),
+      hourlyRate
+        ? { proposalId: str(fd, "proposalId"), title: str(fd, "title"), description: str(fd, "description"), hourlyRate, weeklyLimitHours: str(fd, "weeklyLimitHours"), allowManualTime: fd.get("allowManualTime") === "on" }
+        : { proposalId: str(fd, "proposalId"), title: str(fd, "title"), description: str(fd, "description"), milestones },
+    );
     redirect(`/app/offers/${offer.id}?sent=1`);
   });
 }

@@ -9,6 +9,8 @@ import { getDb } from "@/db/client";
 import { jobs } from "@/db/schema";
 import { requireActor } from "@/lib/session";
 import { getMyProfile } from "@/server/services/profiles";
+import { screeningQuestionsFor } from "@/server/services/jobs";
+import { FileInput } from "@/components/r2";
 
 export const metadata = { title: "Submit a proposal" };
 
@@ -19,6 +21,7 @@ export default async function Apply({ params }: { params: Promise<{ jobId: strin
   if (!/^[0-9a-f-]{36}$/i.test(jobId)) notFound();
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
   if (!job || job.status === "draft") notFound();
+  const questions = await screeningQuestionsFor(db, job.id);
   const profile = actor.capabilities.includes("freelancer") ? await getMyProfile(db, actor) : null;
   const blockers: React.ReactNode[] = [];
   if (!actor.capabilities.includes("freelancer")) blockers.push(<>Add the freelancer capability in <Link className="underline" href="/app/settings">Settings</Link>.</>);
@@ -50,7 +53,18 @@ export default async function Apply({ params }: { params: Promise<{ jobId: strin
           <Field label="Cover letter" name="coverLetter" hint="50–5000 characters. Explain your approach, ask questions, suggest next steps. No contact details.">
             <Textarea name="coverLetter" rows={9} required />
           </Field>
-          <p className="text-xs text-muted">Sending a proposal is free. You can withdraw it until the client sends you an offer. Screening questions, attachments and profile highlights are planned.</p>
+          {questions.length ? (
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-semibold">Screening questions from the client</legend>
+              {questions.map((q) => (
+                <Field key={q.id} label={q.prompt} name={`answer_${q.id}`}>
+                  <Textarea name={`answer_${q.id}`} rows={3} required={q.required} maxLength={2000} />
+                </Field>
+              ))}
+            </fieldset>
+          ) : null}
+          <FileInput label="Attachments (optional): portfolio samples, CV" />
+          <p className="text-xs text-muted">Sending a proposal is free. You can withdraw it until the client sends you an offer.</p>
         </ActionForm>
       </Card>
     </div>

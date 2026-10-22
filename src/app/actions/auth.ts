@@ -1,6 +1,8 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { enforceRateLimit } from "@/server/rate-limit";
 import { getDb } from "@/db/client";
 import { AppError } from "@/domain/errors";
 import type { ActionState } from "@/lib/action-state";
@@ -8,18 +10,15 @@ import { runAction, str } from "@/lib/run-action";
 import { clearSessionCookie, requireActor, safeNext, sessionToken, setSessionCookie, userAgent } from "@/lib/session";
 import * as auth from "@/server/services/auth";
 
-// Simple per-process login throttle (documented limitation: not shared across instances).
-const attempts = new Map<string, { n: number; until: number }>();
-function throttle(key: string) {
-  const now = Date.now();
-  const a = attempts.get(key);
-  if (a && a.until > now && a.n >= 8) throw new AppError("RATE_LIMITED", "Too many sign-in attempts. Try again in a few minutes.");
-  attempts.set(key, a && a.until > now ? { n: a.n + 1, until: a.until } : { n: 1, until: now + 10 * 60_000 });
+async function clientIp() {
+  const h = await headers();
+  return (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || h.get("x-real-ip") || "local";
 }
 
 export async function registerAction(_: ActionState, fd: FormData): Promise<ActionState> {
   return runAction(async () => {
     const db = getDb();
+    await enforceRateLimit(db, "register", await clientIp());
     const input = { email: str(fd, "email"), password: str(fd, "password"), displayName: str(fd, "displayName"), intent: str(fd, "intent") };
     await auth.register(db, input);
     const { token } = await auth.login(db, { email: input.email, password: input.password }, await userAgent());
@@ -30,7 +29,9 @@ export async function registerAction(_: ActionState, fd: FormData): Promise<Acti
 
 export async function loginAction(_: ActionState, fd: FormData): Promise<ActionState> {
   return runAction(async () => {
-    throttle(str(fd, "email").toLowerCase());
+    // Shared (DB-backed) limiter keyed by account and by IP.
+    await enforceRateLimit(getDb(), "login", `acct:${str(fd, "email")}`);
+    await enforceRateLimit(getDb(), "login", `ip:${await clientIp()}`);
     const { token } = await auth.login(getDb(), { email: str(fd, "email"), password: str(fd, "password") }, await userAgent());
     await setSessionCookie(token);
     redirect(safeNext(str(fd, "next")));
@@ -45,6 +46,7 @@ export async function logoutAction() {
 
 export async function forgotPasswordAction(_: ActionState, fd: FormData): Promise<ActionState> {
   return runAction(async () => {
+    await enforceRateLimit(getDb(), "passwordReset", await clientIp());
     await auth.requestPasswordReset(getDb(), str(fd, "email"));
     return { ok: true, message: "If an account exists for that email, a reset link is on its way." };
   });
