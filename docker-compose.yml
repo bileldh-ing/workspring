@@ -1,0 +1,55 @@
+# Local production-like stack: Postgres 17 + migrations + the app.
+#   docker compose up --build        → http://localhost:3000
+#   docker compose run --rm seed     → synthetic demo data (never in real production)
+# Secrets below are DEVELOPMENT placeholders. Use real secrets (env file / secret manager) anywhere else.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: workspring
+      POSTGRES_PASSWORD: workspring-dev-only
+      POSTGRES_DB: workspring
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workspring -d workspring"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: { context: ., target: migrate }
+    environment:
+      DATABASE_URL: postgres://workspring:workspring-dev-only@db:5432/workspring
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  seed:
+    build: { context: ., target: migrate }
+    command: ["node_modules/.bin/tsx", "scripts/seed.ts"]
+    environment:
+      DATABASE_URL: postgres://workspring:workspring-dev-only@db:5432/workspring
+      ALLOW_DEMO_SEED: "true"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    profiles: ["seed"]
+
+  app:
+    build: { context: ., target: runner }
+    ports: ["3000:3000"]
+    environment:
+      DATABASE_URL: postgres://workspring:workspring-dev-only@db:5432/workspring
+      APP_URL: http://localhost:3000
+      PAYMENTS_PROVIDER: test
+      TEST_PROVIDER_WEBHOOK_SECRET: compose-dev-only-webhook-secret-0123456789
+      FILE_URL_SECRET: compose-dev-only-file-url-secret-0123456789
+      STORAGE_DRIVER: local
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
+  storage:

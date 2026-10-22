@@ -8,3 +8,12 @@ allowBuilds:
   embedded-postgres: true
   sharp: true
   "@node-rs/argon2": true
+# pnpm 10 compatibility (allowBuilds is the pnpm 11+ spelling)
+onlyBuiltDependencies:
+  - esbuild
+  - unrs-resolver
+  - embedded-postgres
+  - "@embedded-postgres/linux-arm64"
+  - "@embedded-postgres/linux-x64"
+  - sharp
+  - "@node-rs/argon2"

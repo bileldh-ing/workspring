@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
-    "start": "next start -p 3000",
+    "start": "next start -p ${PORT:-3000}",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
@@ -20,7 +20,11 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:reset": "tsx scripts/reset.ts",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "build:low-mem": "WS_SKIP_BUILD_TYPECHECK=1 next build --webpack",
+    "test:coverage": "vitest run --coverage",
+    "icons": "node scripts/make-icons.mjs",
+    "ci:migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "2.2.2",
@@ -38,6 +42,7 @@
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@vitest/coverage-v8": "5.0.5",
     "drizzle-kit": "0.31.11",
     "embedded-postgres": "17.10.0-beta.17",
     "eslint": "9.39.5",
@@ -46,5 +51,6 @@
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "5.0.5"
-  }
+  },
+  "packageManager": "pnpm@12.14.0"
 }

@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.data
+.storage
+.env
+.env.*
+!.env.example
+test-results
+playwright-report
+coverage
+android
+mobile/android
+docs/screenshots
+*.log
+*.tsbuildinfo

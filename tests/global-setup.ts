@@ -6,8 +6,11 @@ import { runMigrations } from "../scripts/migrate-lib";
 import { startEmbeddedPostgres } from "../scripts/pg";
 
 export default async function setup() {
-  if (process.env.TEST_DATABASE_URL) {
-    process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+  // CI (GitHub Actions postgres service) or a local server: TEST_DATABASE_URL, or DATABASE_URL when CI=true.
+  // The suite TRUNCATES every table, so it never falls back to DATABASE_URL outside CI.
+  const external = process.env.TEST_DATABASE_URL ?? (process.env.CI ? process.env.DATABASE_URL : undefined);
+  if (external) {
+    process.env.DATABASE_URL = external;
     await runMigrations(process.env.DATABASE_URL);
     return;
   }
