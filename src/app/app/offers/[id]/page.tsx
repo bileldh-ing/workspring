@@ -10,7 +10,7 @@ import { requireActor } from "@/lib/session";
 import { getOffer } from "@/server/services/contracts";
 
 export const metadata = { title: "Offer" };
-type Snap = { milestones: { seq: number; title: string; amountMinor: number; dueDate: string | null }[]; feeRule: { version: number; freelancerFeeBps: number }; paymentMode: string; policies: Record<string, string> };
+type Snap = { contractType?: string; hourlyRateMinor?: number; weeklyLimitMinutes?: number; allowManualTime?: boolean; maxWeeklyMinor?: number; milestones?: { seq: number; title: string; amountMinor: number; dueDate: string | null }[]; feeRule: { version: number; freelancerFeeBps: number }; paymentMode: string; policies: Record<string, string> };
 
 export default async function OfferDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ sent?: string }> }) {
   const actor = await requireActor();
@@ -33,16 +33,26 @@ export default async function OfferDetail({ params, searchParams }: { params: Pr
       <Card className="space-y-3 text-sm">
         <h2 className="text-base font-semibold">Terms (immutable snapshot)</h2>
         <p className="whitespace-pre-wrap text-ink-soft">{o.description}</p>
-        <table className="w-full text-left">
-          <caption className="sr-only">Milestones</caption>
-          <thead className="text-xs uppercase text-muted"><tr><th scope="col" className="py-1">#</th><th scope="col">Milestone</th><th scope="col">Due</th><th scope="col" className="text-right">Amount</th></tr></thead>
-          <tbody className="divide-y divide-line">
-            {snap.milestones.map((m) => <tr key={m.seq}><td className="py-1.5">{m.seq}</td><td>{m.title}</td><td>{m.dueDate ?? "-"}</td><td className="text-right">{formatMoney(m.amountMinor, o.currency)}</td></tr>)}
-          </tbody>
-          <tfoot><tr className="font-semibold"><td /><td>Total</td><td /><td className="text-right">{formatMoney(o.totalMinor, o.currency)}</td></tr></tfoot>
-        </table>
-        <p className="text-muted">Fee rule v{snap.feeRule.version}: {(snap.feeRule.freelancerFeeBps / 100).toFixed(2)}% deducted from each released milestone. Payment mode: {snap.paymentMode}. Expires {formatDate(o.expiresAt)}.</p>
-        <p className="text-muted">{snap.policies.review}. {snap.policies.terms}.</p>
+        {snap.contractType === "hourly" || o.contractType === "hourly" ? (
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
+            <dt className="text-muted">Contract type</dt><dd>Hourly</dd>
+            <dt className="text-muted">Hourly rate</dt><dd>{formatMoney(snap.hourlyRateMinor ?? o.hourlyRateMinor ?? 0, o.currency)}/h</dd>
+            <dt className="text-muted">Weekly limit</dt><dd>{Math.round((snap.weeklyLimitMinutes ?? o.weeklyLimitMinutes ?? 0) / 60)} h</dd>
+            <dt className="text-muted">Maximum per week</dt><dd>{formatMoney(snap.maxWeeklyMinor ?? o.totalMinor, o.currency)}</dd>
+            <dt className="text-muted">Manual time</dt><dd>{(snap.allowManualTime ?? o.allowManualTime) ? "Allowed (labelled as manual)" : "Not allowed"}</dd>
+          </dl>
+        ) : (
+          <table className="w-full text-left">
+            <caption className="sr-only">Milestones</caption>
+            <thead className="text-xs uppercase text-muted"><tr><th scope="col" className="py-1">#</th><th scope="col">Milestone</th><th scope="col">Due</th><th scope="col" className="text-right">Amount</th></tr></thead>
+            <tbody className="divide-y divide-line">
+              {(snap.milestones ?? []).map((m) => <tr key={m.seq}><td className="py-1.5">{m.seq}</td><td>{m.title}</td><td>{m.dueDate ?? "-"}</td><td className="text-right">{formatMoney(m.amountMinor, o.currency)}</td></tr>)}
+            </tbody>
+            <tfoot><tr className="font-semibold"><td /><td>Total</td><td /><td className="text-right">{formatMoney(o.totalMinor, o.currency)}</td></tr></tfoot>
+          </table>
+        )}
+        <p className="text-muted">Fee rule v{snap.feeRule.version}: {(snap.feeRule.freelancerFeeBps / 100).toFixed(2)}% deducted from each {o.contractType === "hourly" ? "paid timesheet" : "released milestone"}. Payment mode: {snap.paymentMode}. Expires {formatDate(o.expiresAt)}.</p>
+        <p className="text-muted">{[snap.policies?.review, snap.policies?.timesheets, snap.policies?.tracking, snap.policies?.manualTime, snap.policies?.terms].filter(Boolean).join(". ")}.</p>
       </Card>
       {o.effectiveStatus === "sent" && o.viewerRole === "freelancer" ? (
         <Card className="flex flex-wrap items-start gap-3">

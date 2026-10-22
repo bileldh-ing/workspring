@@ -83,6 +83,7 @@ test("hourly: hire hourly → manual time → submit timesheet → client approv
   await expect(page.getByRole("button", { name: "Stop timer" })).toBeVisible();
   await page.getByRole("button", { name: "Stop timer" }).click();
   await expect(page.getByRole("button", { name: "Start timer" })).toBeVisible();
+  await page.getByText("Add manual time").click();
   await page.getByLabel("Date (UTC)").fill(new Date().toISOString().slice(0, 10));
   await page.getByLabel("Minutes").fill("45");
   await page.getByLabel("Memo").last().fill("Fixed the offline sync crash");
@@ -95,8 +96,10 @@ test("hourly: hire hourly → manual time → submit timesheet → client approv
   await signIn(page, "client-atlas@demo.workspring.test");
   await page.goto(contractUrl);
   await page.getByRole("button", { name: /^Approve and pay / }).click();
-  await page.getByRole("button", { name: "Simulate provider: payment succeeded" }).click();
-  await page.waitForURL(/webhook=applied/);
+  // the test provider requires a hosted-checkout step for timesheet payments
+  await page.waitForURL(/\/test-provider\/checkout\//);
+  await page.getByRole("button", { name: /^Simulate: .*succeeded$/ }).click();
+  await page.waitForURL(/\/app\/contracts\/.*webhook=applied/);
   await expect(page.getByText("paid", { exact: true }).first()).toBeVisible();
 });
 
