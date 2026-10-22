@@ -1,0 +1,54 @@
+name: Deploy
+
+# Optional continuous deployment to Fly.io. Skips cleanly (green, with a notice) when FLY_API_TOKEN is not set.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          CI_OK: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+        run: |
+          if [ -n "$FLY_API_TOKEN" ] && [ "$CI_OK" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Deploy skipped::FLY_API_TOKEN secret is not configured (or CI did not pass). See docs/DEPLOYMENT.md."
+          fi
+
+  fly:
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy
+        run: flyctl deploy --remote-only --config fly.toml
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Smoke check
+        env:
+          APP_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          if [ -n "$APP_URL" ]; then curl -fsS "$APP_URL/api/ready"; else echo "Set the PRODUCTION_URL repository variable to enable the smoke check."; fi

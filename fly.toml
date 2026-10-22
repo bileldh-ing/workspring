@@ -1,0 +1,37 @@
+# Fly.io app config used by .github/workflows/deploy.yml (only when FLY_API_TOKEN is set).
+# Set secrets with: fly secrets set DATABASE_URL=... FILE_URL_SECRET=... TEST_PROVIDER_WEBHOOK_SECRET=... APP_URL=https://<app>.fly.dev
+app = "workspring"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "Dockerfile"
+  build-target = "runner"
+
+[deploy]
+  # The migrate stage is not in the runner image; run migrations from CI or a one-off machine:
+  #   fly machine run --dockerfile Dockerfile --build-target migrate (see docs/DEPLOYMENT.md)
+  strategy = "rolling"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  PAYMENTS_PROVIDER = "test"
+  STORAGE_DRIVER = "local"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/health"
+    timeout = "5s"
+
+[mounts]
+  source = "workspring_storage"
+  destination = "/data/storage"
