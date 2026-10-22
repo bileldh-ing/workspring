@@ -52,7 +52,7 @@ test("main path through the UI: post → apply → message → offer → accept 
   await page.waitForURL(/\/app\/messages\//);
   await page.getByRole("textbox", { name: "Message" }).fill("Hi! Could you start on Monday?");
   await page.getByRole("button", { name: "Send message" }).click();
-  await expect(page.getByText("Hi! Could you start on Monday?")).toBeVisible();
+  await expect(page.getByRole("paragraph").filter({ hasText: "Hi! Could you start on Monday?" })).toBeVisible();
   await page.goto(proposalUrl.replace(/\?.*$/, ""));
   await page.getByLabel("Scope and deliverables").fill("Dashboard with filters, CSV export, tests and docs.");
   await page.getByRole("button", { name: "Send offer" }).click();
