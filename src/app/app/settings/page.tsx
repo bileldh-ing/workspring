@@ -2,12 +2,18 @@ import { addCapabilityAction, logoutAction, switchModeAction } from "@/app/actio
 import { ActionForm } from "@/components/action-form";
 import { buttonClass, Card, Notice, PageHeader } from "@/components/ui";
 import { requireActor } from "@/lib/session";
+import { savePreferencesAction } from "@/app/actions/r2";
+import { BlockForm } from "@/components/r2";
+import { getDb } from "@/db/client";
+import { getPreferences } from "@/server/services/notifications";
+import { listBlocked } from "@/server/services/safety";
 
 export const metadata = { title: "Settings" };
 
 export default async function Settings({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const actor = await requireActor();
   const { error } = await searchParams;
+  const [prefs, blocked] = await Promise.all([getPreferences(getDb(), actor), listBlocked(getDb(), actor)]);
   const missing = (["client", "freelancer"] as const).filter((c) => !actor.capabilities.includes(c));
   return (
     <div className="max-w-2xl space-y-4">
@@ -37,11 +43,37 @@ export default async function Settings({ searchParams }: { searchParams: Promise
         ))}
       </Card>
       <Card>
+        <h2 className="mb-1 font-semibold">Notifications</h2>
+        <p className="mb-3 text-sm text-muted">Choose where each kind of update reaches you. Payment and security/safety alerts always appear in-app because they can need action.</p>
+        <ActionForm action={savePreferencesAction} submitLabel="Save preferences" variant="secondary">
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-muted"><th className="py-1 font-medium">Type</th><th className="font-medium">In-app</th><th className="font-medium">Email</th></tr></thead>
+            <tbody>
+              {prefs.map((p) => (
+                <tr key={p.category} className="border-t border-line">
+                  <td className="py-2">{p.label}</td>
+                  <td><input type="checkbox" name={`inapp_${p.category}`} defaultChecked={p.inApp} disabled={p.mandatory} aria-label={`${p.label}: in-app`} />{p.mandatory ? <input type="hidden" name={`inapp_${p.category}`} value="on" /> : null}</td>
+                  <td><input type="checkbox" name={`email_${p.category}`} defaultChecked={p.email} aria-label={`${p.label}: email`} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ActionForm>
+      </Card>
+      <Card>
+        <h2 className="mb-1 font-semibold">Blocked members</h2>
+        {blocked.length === 0 ? <p className="text-sm text-muted">You haven&apos;t blocked anyone.</p> : (
+          <ul className="space-y-2">
+            {blocked.map((b) => <li key={b.id} className="flex items-center justify-between gap-3 text-sm"><span>{b.displayName}</span><BlockForm userId={b.id} blocked back="/app/settings" /></li>)}
+          </ul>
+        )}
+      </Card>
+      <Card>
         <h2 className="mb-2 font-semibold">Session</h2>
         <form action={logoutAction}>
           <button className={buttonClass("danger")}>Sign out</button>
         </form>
-        <p className="mt-2 text-xs text-muted">Planned: account deletion and data export requests, notification preferences, phone verification.</p>
+        <p className="mt-2 text-xs text-muted">Planned: self-service account deletion and data export, phone verification. Until then, open a support ticket for deletion or export requests.</p>
       </Card>
     </div>
   );
