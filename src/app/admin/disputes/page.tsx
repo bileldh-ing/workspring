@@ -27,7 +27,7 @@ export default async function Disputes() {
               {(["release", "refund"] as const).map((o) => (
                 <ActionForm key={o} action={adminAction} submitLabel={o === "release" ? "Resolve: allow release" : "Resolve: refund client"} variant={o === "release" ? "accent" : "danger"} confirm={o === "refund" ? "Request a refund from the payment provider?" : undefined}>
                   <input type="hidden" name="op" value="resolve_dispute" /><input type="hidden" name="disputeId" value={r.d.id} /><input type="hidden" name="outcome" value={o} />
-                  <Field label="Resolution note (shared with both parties)" name="note"><Textarea name="note" id={`note-${o}-${r.d.id}`} rows={2} /></Field>
+                  <Field htmlFor={`note-${o}-${r.d.id}`} label="Resolution note (shared with both parties)" name="note"><Textarea name="note" id={`note-${o}-${r.d.id}`} rows={2} /></Field>
                 </ActionForm>
               ))}
             </div>

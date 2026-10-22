@@ -163,7 +163,7 @@ export default async function Workroom({ params, searchParams }: { params: Promi
                   <div className="mt-2 max-w-xl">
                     <ActionForm action={disputeAction} submitLabel="Open dispute" variant="danger" confirm="Open a dispute? The milestone will be put on hold until support reviews it.">
                       <input type="hidden" name="op" value="open" /><input type="hidden" name="milestoneId" value={m.id} /><input type="hidden" name="contractId" value={c.id} />
-                      <Field label="What went wrong?" name="reason" hint="20–3000 characters. Support reviews the workroom history. WorkSpring's decision does not override your bank's or provider's rights."><Textarea name="reason" id={`dispute-${m.id}`} rows={3} required /></Field>
+                      <Field htmlFor={`dispute-${m.id}`} label="What went wrong?" name="reason" hint="20–3000 characters. Support reviews the workroom history. WorkSpring's decision does not override your bank's or provider's rights."><Textarea name="reason" id={`dispute-${m.id}`} rows={3} required /></Field>
                     </ActionForm>
                   </div>
                 </details>

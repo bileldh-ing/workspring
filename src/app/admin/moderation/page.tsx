@@ -34,7 +34,7 @@ export default async function Moderation() {
             </ActionForm>
             <ActionForm action={adminAction} submitLabel="Request changes" variant="secondary">
               <input type="hidden" name="op" value="moderate" /><input type="hidden" name="serviceId" value={s.id} /><input type="hidden" name="decision" value="request_changes" />
-              <Field label="What needs to change?" name="note"><Textarea name="note" id={`note-${s.id}`} rows={2} /></Field>
+              <Field htmlFor={`note-${s.id}`} label="What needs to change?" name="note"><Textarea name="note" id={`note-${s.id}`} rows={2} /></Field>
             </ActionForm>
           </div>
         </Card>

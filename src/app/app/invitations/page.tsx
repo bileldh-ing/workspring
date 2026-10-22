@@ -31,7 +31,7 @@ export default async function Invitations() {
                     <ActionForm action={invitationResponseAction} submitLabel="Decline" variant="danger" className="flex flex-wrap items-end gap-2">
                       <input type="hidden" name="invitationId" value={r.inv.id} />
                       <input type="hidden" name="op" value="decline" />
-                      <Field label="Reason (optional)" name="reason"><Input name="reason" id={`reason-${r.inv.id}`} maxLength={500} /></Field>
+                      <Field htmlFor={`reason-${r.inv.id}`} label="Reason (optional)" name="reason"><Input name="reason" id={`reason-${r.inv.id}`} maxLength={500} /></Field>
                     </ActionForm>
                   </div>
                 ) : null}

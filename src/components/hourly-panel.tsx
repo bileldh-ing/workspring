@@ -36,13 +36,13 @@ export function HourlyPanel({ w, pendingIntents, testMode }: { w: W; pendingInte
               <p className="text-sm font-semibold text-accent"><span className="mr-2 inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-danger align-middle" aria-hidden="true" />Timer running · <Elapsed since={w.running.startedAt.toISOString()} /></p>
               <ActionForm action={hourlyAction} submitLabel="Stop timer" variant="danger" className="flex flex-wrap items-end gap-2">
                 {h("stop")}
-                <Field label="Memo" name="memo"><Input name="memo" id="stop-memo" defaultValue={w.running.memo} maxLength={500} /></Field>
+                <Field htmlFor="stop-memo" label="Memo" name="memo"><Input name="memo" id="stop-memo" defaultValue={w.running.memo} maxLength={500} /></Field>
               </ActionForm>
             </div>
           ) : (
             <ActionForm action={hourlyAction} submitLabel="Start timer" variant="accent" className="flex flex-wrap items-end gap-2">
               {h("start")}
-              <Field label="What are you working on?" name="memo"><Input name="memo" id="start-memo" maxLength={500} placeholder="e.g. API pagination" /></Field>
+              <Field htmlFor="start-memo" label="What are you working on?" name="memo"><Input name="memo" id="start-memo" maxLength={500} placeholder="e.g. API pagination" /></Field>
             </ActionForm>
           )
         ) : null}
@@ -53,10 +53,10 @@ export function HourlyPanel({ w, pendingIntents, testMode }: { w: W; pendingInte
               <ActionForm action={hourlyAction} submitLabel="Add entry" variant="secondary">
                 {h("manual")}
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Date (UTC)" name="date"><Input name="date" id="manual-date" type="date" required /></Field>
-                  <Field label="Minutes" name="minutes"><Input name="minutes" id="manual-minutes" type="number" min={1} max={1440} required /></Field>
+                  <Field htmlFor="manual-date" label="Date (UTC)" name="date"><Input name="date" id="manual-date" type="date" required /></Field>
+                  <Field htmlFor="manual-minutes" label="Minutes" name="minutes"><Input name="minutes" id="manual-minutes" type="number" min={1} max={1440} required /></Field>
                 </div>
-                <Field label="Memo" name="memo"><Input name="memo" id="manual-memo" required maxLength={500} /></Field>
+                <Field htmlFor="manual-memo" label="Memo" name="memo"><Input name="memo" id="manual-memo" required maxLength={500} /></Field>
               </ActionForm>
             </div>
           </details>
@@ -94,7 +94,7 @@ export function HourlyPanel({ w, pendingIntents, testMode }: { w: W; pendingInte
                 </ActionForm>
                 <ActionForm action={hourlyAction} submitLabel="Dispute this week" variant="danger">
                   {h("dispute_week")}<input type="hidden" name="timesheetId" value={t.id} />
-                  <Field label="What's wrong with these hours?" name="reason"><Textarea name="reason" id={`reason-${t.id}`} rows={2} required /></Field>
+                  <Field htmlFor={`reason-${t.id}`} label="What's wrong with these hours?" name="reason"><Textarea name="reason" id={`reason-${t.id}`} rows={2} required /></Field>
                 </ActionForm>
               </div>
             ) : null}

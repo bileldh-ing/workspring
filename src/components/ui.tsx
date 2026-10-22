@@ -130,10 +130,10 @@ export function TestModeBadge() {
 const fieldBase =
   "mt-1 block w-full rounded-[var(--radius-control)] border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 aria-[invalid=true]:border-danger";
 
-export function Field({ label, name, error, hint, children }: { label: string; name: string; error?: string; hint?: string; children: ReactNode }) {
+export function Field({ label, name, htmlFor, error, hint, children }: { label: string; name: string; htmlFor?: string; error?: string; hint?: string; children: ReactNode }) {
   return (
     <div className="space-y-0.5">
-      <label htmlFor={name} className="block text-sm font-medium text-ink">
+      <label htmlFor={htmlFor ?? name} className="block text-sm font-medium text-ink">
         {label}
       </label>
       {children}
