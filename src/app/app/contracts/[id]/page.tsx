@@ -78,7 +78,7 @@ export default async function Workroom({ params, searchParams }: { params: Promi
         actions={provider.mode === "test" ? <TestModeBadge /> : null}
       />
       <DoneNotice done={sp.done} messages={{ review: "Review submitted. It becomes visible when the other party reviews too, or when the 14-day window closes.", dispute_opened: "Dispute opened. The milestone is on hold until support reviews it.", dispute_withdrawn: "Dispute withdrawn." }} />
-      {sp.started ? <Notice tone="success">Contract started. The client funds milestone 1 next.</Notice> : null}
+      {sp.started ? <Notice tone="success">{hourly ? "Contract started. The freelancer can now log time; the client reviews weekly timesheets." : "Contract started. The client funds milestone 1 next."}</Notice> : null}
       {sp.webhook ? <Notice tone={sp.webhook === "applied" ? "success" : "warn"}>Provider webhook processed: {sp.webhook}</Notice> : null}
       {!provider.configured ? <Notice tone="warn" title="Payments are not configured">{provider.unavailableReason} Funding and release are disabled; nothing is simulated.</Notice> : null}
       <Notice>
