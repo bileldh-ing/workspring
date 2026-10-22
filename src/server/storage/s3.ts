@@ -13,7 +13,7 @@ const sha256hex = (b: string | Uint8Array) => createHash("sha256").update(b).dig
 const hmac = (k: string | Buffer, d: string) => createHmac("sha256", k).update(d).digest();
 
 /** AWS Signature V4 header signing for a single path-style request (exported for unit tests). */
-export function signV4(input: { method: string; url: URL; region: string; accessKeyId: string; secretAccessKey: string; body: Uint8Array | string; now?: Date; contentType?: string }) {
+export function signV4(input: { method: string; url: URL; region: string; accessKeyId: string; secretAccessKey: string; body: Uint8Array | string; now?: Date; contentType?: string }): Record<string, string> {
   const now = input.now ?? new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
   const date = amzDate.slice(0, 8);
