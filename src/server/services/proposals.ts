@@ -1,12 +1,14 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { DB, Executor } from "@/db/client";
-import { freelancerProfiles, jobs, proposalEvents, proposals, users } from "@/db/schema";
+import { freelancerProfiles, jobInvitations, jobScreeningQuestions, jobs, proposalAnswers, proposalEvents, proposals, users } from "@/db/schema";
 import { AppError } from "@/domain/errors";
 import { isCurrency, toMinor } from "@/domain/money";
 import { type Actor, assertNotSelf, canReadProposal, requireCapability, requireVerifiedEmail } from "@/domain/permissions";
 import { assertTransition, proposalMachine } from "@/domain/state-machines";
 import { declineSchema, parseOrThrow, proposalSchema } from "@/domain/validation";
 import { isUniqueViolation } from "./db-errors";
+import { notify } from "./notifications";
+import { assertNotBlocked } from "./safety";
 
 type ProposalStatus = (typeof proposals.$inferSelect)["status"];
 
@@ -22,6 +24,13 @@ export async function submitProposal(db: DB, actor: Actor, raw: unknown) {
   if (!job || job.status === "draft") throw new AppError("NOT_FOUND", "Job not found");
   if (job.status !== "open") throw new AppError("CONFLICT", "This job is not accepting proposals");
   assertNotSelf(actor.userId, job.clientId, "You can't apply to your own job");
+  await assertNotBlocked(db, actor.userId, job.clientId);
+  const questions = await db.select().from(jobScreeningQuestions).where(eq(jobScreeningQuestions.jobId, job.id)).orderBy(jobScreeningQuestions.seq);
+  const answers = questions.map((q) => ({ q, answer: (input.answers[q.id] ?? "").trim() }));
+  const missing = answers.filter((a) => a.q.required && a.answer.length < 2);
+  if (missing.length) {
+    throw new AppError("VALIDATION", "Answer every screening question", Object.fromEntries(missing.map((m) => [`answers.${m.q.id}`, "Required"])));
+  }
   if (!isCurrency(job.currency)) throw new AppError("VALIDATION", "Unsupported currency");
   const amountMinor = toMinor(input.amount, job.currency);
   const termsSnapshot = {
@@ -49,6 +58,13 @@ export async function submitProposal(db: DB, actor: Actor, raw: unknown) {
         })
         .returning();
       await tx.insert(proposalEvents).values({ proposalId: p.id, actorId: actor.userId, fromStatus: null, toStatus: "submitted" });
+      if (answers.length) await tx.insert(proposalAnswers).values(answers.map((a) => ({ proposalId: p.id, questionId: a.q.id, prompt: a.q.prompt, answer: a.answer })));
+      // An open invitation to this job is fulfilled by applying.
+      await tx
+        .update(jobInvitations)
+        .set({ status: "accepted", respondedAt: new Date() })
+        .where(and(eq(jobInvitations.jobId, job.id), eq(jobInvitations.freelancerId, actor.userId), eq(jobInvitations.status, "sent")));
+      await notify(tx, { userId: job.clientId, category: "proposals", kind: "proposal.received", title: `New proposal on "${job.title}"`, body: `${actor.displayName} sent a proposal.`, link: `/app/proposals/${p.id}`, dedupeKey: `proposal.received:${p.id}` });
       return p;
     });
   } catch (e) {
@@ -96,6 +112,9 @@ export async function setProposalReview(db: DB, actor: Actor, id: string, action
     if (!row || row.job.clientId !== actor.userId) throw new AppError("NOT_FOUND", "Proposal not found");
     const to: ProposalStatus = action === "shortlist" ? "shortlisted" : action === "unshortlist" ? "submitted" : "declined";
     await moveProposal(tx, id, row.p.status, to, actor.userId, note);
+    if (to === "declined" || to === "shortlisted") {
+      await notify(tx, { userId: row.p.freelancerId, category: "proposals", kind: `proposal.${to}`, title: `Your proposal for "${row.job.title}" was ${to}`, body: note ?? undefined, link: `/app/proposals/${id}`, dedupeKey: `proposal.${to}:${id}` });
+    }
   });
 }
 
@@ -110,7 +129,8 @@ export async function getProposal(db: Executor, actor: Actor, id: string) {
     .where(eq(proposals.id, id));
   if (!row || !canReadProposal(actor, row.p, row.job)) throw new AppError("NOT_FOUND", "Proposal not found");
   const events = await db.select().from(proposalEvents).where(eq(proposalEvents.proposalId, id)).orderBy(desc(proposalEvents.createdAt));
-  return { ...row, events, viewerRole: actor.userId === row.job.clientId ? ("client" as const) : ("freelancer" as const) };
+  const answers = await db.select().from(proposalAnswers).where(eq(proposalAnswers.proposalId, id));
+  return { ...row, events, answers, viewerRole: actor.userId === row.job.clientId ? ("client" as const) : ("freelancer" as const) };
 }
 
 export async function listMyProposals(db: Executor, actor: Actor, status?: ProposalStatus) {

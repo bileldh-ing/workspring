@@ -8,7 +8,7 @@ const TOLERANCE_SECONDS = 300;
 
 const eventSchema = z.object({
   id: z.string().min(8).max(100),
-  type: z.enum(["payment.succeeded", "payment.failed", "transfer.succeeded", "transfer.failed"]),
+  type: z.enum(["payment.succeeded", "payment.failed", "transfer.succeeded", "transfer.failed", "refund.succeeded", "refund.failed"]),
   providerRef: z.string().min(4).max(200),
   amountMinor: z.number().int().positive(),
   currency: z.string().length(3),
@@ -53,6 +53,9 @@ export function createTestProvider(secret: string): PaymentProvider {
     },
     async createTransfer(input) {
       return { providerRef: `tp_tr_${input.intentId}`, status: "processing" };
+    },
+    async createRefund(input) {
+      return { providerRef: `tp_rf_${input.intentId}`, status: "processing" };
     },
     verifyWebhook(rawBody, headers): ProviderEvent {
       verifySignature(rawBody, headers.get(TEST_SIGNATURE_HEADER), secret);

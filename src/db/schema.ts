@@ -55,8 +55,18 @@ export const milestoneStatusEnum = pgEnum("milestone_status", [
   "release_pending",
   "released",
   "canceled",
+  "disputed",
+  "refund_pending",
+  "refunded",
 ]);
-export const paymentPurposeEnum = pgEnum("payment_purpose", ["milestone_funding", "milestone_release"]);
+export const paymentPurposeEnum = pgEnum("payment_purpose", [
+  "milestone_funding",
+  "milestone_release",
+  "timesheet_payment",
+  "order_payment",
+  "order_release",
+  "milestone_refund",
+]);
 export const paymentStatusEnum = pgEnum("payment_status", [
   "requires_action",
   "processing",
@@ -398,6 +408,8 @@ export const messages = pgTable(
       .notNull()
       .references(() => users.id),
     body: text("body").notNull(),
+    editedAt: ts("edited_at"),
+    deletedAt: ts("deleted_at"),
     createdAt: createdAt(),
   },
   (t) => [index("messages_conversation_idx").on(t.conversationId, t.createdAt)],
@@ -436,6 +448,9 @@ export const offers = pgTable(
     contractType: contractTypeEnum("contract_type").notNull(),
     currency: text("currency").notNull(),
     totalMinor: money("total_minor").notNull(),
+    hourlyRateMinor: money("hourly_rate_minor"),
+    weeklyLimitMinutes: integer("weekly_limit_minutes"),
+    allowManualTime: boolean("allow_manual_time").notNull().default(false),
     status: offerStatusEnum("status").notNull().default("sent"),
     termsSnapshot: jsonb("terms_snapshot").$type<Record<string, unknown>>().notNull(),
     feeRuleId: uuid("fee_rule_id")
@@ -490,6 +505,9 @@ export const contracts = pgTable(
     contractType: contractTypeEnum("contract_type").notNull(),
     currency: text("currency").notNull(),
     totalMinor: money("total_minor").notNull(),
+    hourlyRateMinor: money("hourly_rate_minor"),
+    weeklyLimitMinutes: integer("weekly_limit_minutes"),
+    allowManualTime: boolean("allow_manual_time").notNull().default(false),
     status: contractStatusEnum("status").notNull().default("active"),
     termsSnapshot: jsonb("terms_snapshot").$type<Record<string, unknown>>().notNull(),
     feeRuleSnapshot: jsonb("fee_rule_snapshot").$type<Record<string, unknown>>().notNull(),
@@ -607,9 +625,9 @@ export const paymentIntents = pgTable(
     mode: paymentModeEnum("mode").notNull(),
     providerRef: text("provider_ref"),
     purpose: paymentPurposeEnum("purpose").notNull(),
-    milestoneId: uuid("milestone_id")
-      .notNull()
-      .references(() => milestones.id),
+    milestoneId: uuid("milestone_id").references(() => milestones.id),
+    timesheetId: uuid("timesheet_id"),
+    serviceOrderId: uuid("service_order_id"),
     amountMinor: money("amount_minor").notNull(),
     feeMinor: money("fee_minor").notNull().default(0),
     currency: text("currency").notNull(),
@@ -624,7 +642,10 @@ export const paymentIntents = pgTable(
     uniqueIndex("payment_intents_idem_uq").on(t.idempotencyKey),
     uniqueIndex("payment_intents_provider_ref_uq").on(t.provider, t.providerRef),
     index("payment_intents_milestone_idx").on(t.milestoneId),
+    index("payment_intents_timesheet_idx").on(t.timesheetId),
+    index("payment_intents_order_idx").on(t.serviceOrderId),
     check("payment_intents_amount_positive", sql`${t.amountMinor} > 0`),
+    check("payment_intents_one_target", sql`num_nonnulls(${t.milestoneId}, ${t.timesheetId}, ${t.serviceOrderId}) = 1`),
   ],
 );
 
@@ -654,6 +675,7 @@ export const ledgerEntries = pgTable(
     mode: paymentModeEnum("mode").notNull(),
     contractId: uuid("contract_id").references(() => contracts.id),
     milestoneId: uuid("milestone_id").references(() => milestones.id),
+    serviceOrderId: uuid("service_order_id"),
     paymentIntentId: uuid("payment_intent_id")
       .notNull()
       .references(() => paymentIntents.id),
@@ -668,3 +690,549 @@ export const ledgerEntries = pgTable(
     check("ledger_amount_positive", sql`${t.amountMinor} > 0`),
   ],
 );
+
+// =====================================================================================================
+// R2 additions: invitations, screening, files, notifications, safety, interviews, hourly, services,
+// reviews, agencies, support, disputes, admin roles, rate limits.
+// =====================================================================================================
+
+export const invitationStatusEnum = pgEnum("invitation_status", ["sent", "accepted", "declined", "revoked", "expired"]);
+export const attachmentEntityEnum = pgEnum("attachment_entity", ["proposal", "message", "milestone_submission", "order_delivery", "support_ticket", "dispute"]);
+export const reportTargetEnum = pgEnum("report_target", ["user", "job", "message", "service", "review"]);
+export const reportReasonEnum = pgEnum("report_reason", ["spam", "scam_or_fraud", "harassment", "fake_profile", "inappropriate", "malicious_file", "off_platform_payment", "other"]);
+export const reportStatusEnum = pgEnum("report_status", ["open", "reviewing", "actioned", "dismissed"]);
+export const interviewStatusEnum = pgEnum("interview_status", ["proposed", "confirmed", "declined", "canceled", "completed"]);
+export const timeSourceEnum = pgEnum("time_source", ["timer", "manual"]);
+export const timesheetStatusEnum = pgEnum("timesheet_status", ["submitted", "approved", "disputed", "payment_pending", "paid"]);
+export const serviceStatusEnum = pgEnum("service_status", ["draft", "pending_review", "published", "changes_requested", "paused", "archived"]);
+export const serviceTierEnum = pgEnum("service_tier", ["starter", "standard", "advanced"]);
+export const orderStatusEnum = pgEnum("order_status", [
+  "pending_payment",
+  "requirements_pending",
+  "in_progress",
+  "delivered",
+  "revision_requested",
+  "release_pending",
+  "completed",
+  "canceled",
+]);
+export const agencyRoleEnum = pgEnum("agency_role", ["owner", "admin", "member"]);
+export const ticketStatusEnum = pgEnum("ticket_status", ["open", "waiting_on_user", "resolved", "closed"]);
+export const ticketCategoryEnum = pgEnum("ticket_category", ["account", "payments", "contract", "safety", "technical", "other"]);
+export const disputeStatusEnum = pgEnum("dispute_status", ["open", "under_review", "resolved_release", "resolved_refund", "withdrawn"]);
+export const adminRoleEnum = pgEnum("admin_role", ["superadmin", "support", "moderator", "finance"]);
+
+export const jobScreeningQuestions = pgTable(
+  "job_screening_questions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    prompt: text("prompt").notNull(),
+    required: boolean("required").notNull().default(true),
+  },
+  (t) => [uniqueIndex("job_screening_questions_seq_uq").on(t.jobId, t.seq)],
+);
+
+export const proposalAnswers = pgTable(
+  "proposal_answers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    proposalId: uuid("proposal_id").notNull().references(() => proposals.id, { onDelete: "cascade" }),
+    questionId: uuid("question_id").notNull().references(() => jobScreeningQuestions.id, { onDelete: "cascade" }),
+    prompt: text("prompt").notNull(), // snapshot of the question as answered
+    answer: text("answer").notNull(),
+  },
+  (t) => [uniqueIndex("proposal_answers_uq").on(t.proposalId, t.questionId)],
+);
+
+export const jobInvitations = pgTable(
+  "job_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull().references(() => users.id),
+    freelancerId: uuid("freelancer_id").notNull().references(() => users.id),
+    message: text("message").notNull(),
+    status: invitationStatusEnum("status").notNull().default("sent"),
+    expiresAt: ts("expires_at").notNull(),
+    respondedAt: ts("responded_at"),
+    declineReason: text("decline_reason"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("job_invitations_one_open_uq").on(t.jobId, t.freelancerId).where(sql`${t.status} = 'sent'`),
+    index("job_invitations_freelancer_idx").on(t.freelancerId, t.status),
+  ],
+);
+
+/** Private file metadata. Bytes live in the storage adapter under storage_key; access is checked per entity. */
+export const attachments = pgTable(
+  "attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    uploaderId: uuid("uploader_id").notNull().references(() => users.id),
+    entityType: attachmentEntityEnum("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    storageKey: text("storage_key").notNull().unique(),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    sha256: text("sha256").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("attachments_entity_idx").on(t.entityType, t.entityId), check("attachments_size_positive", sql`${t.sizeBytes} > 0`)],
+);
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    link: text("link"),
+    dedupeKey: text("dedupe_key").notNull(),
+    readAt: ts("read_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("notifications_dedupe_uq").on(t.userId, t.dedupeKey), index("notifications_user_idx").on(t.userId, t.createdAt)],
+);
+
+export const notificationPreferences = pgTable(
+  "notification_preferences",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    category: text("category").notNull(), // messages | proposals | contracts | payments | marketing-free product updates
+    email: boolean("email").notNull().default(true),
+    inApp: boolean("in_app").notNull().default(true),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.category] })],
+);
+
+export const userBlocks = pgTable(
+  "user_blocks",
+  {
+    blockerId: uuid("blocker_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    blockedId: uuid("blocked_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.blockerId, t.blockedId] }), check("user_blocks_not_self", sql`${t.blockerId} <> ${t.blockedId}`)],
+);
+
+export const abuseReports = pgTable(
+  "abuse_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reporterId: uuid("reporter_id").notNull().references(() => users.id),
+    targetType: reportTargetEnum("target_type").notNull(),
+    targetId: uuid("target_id").notNull(),
+    reason: reportReasonEnum("reason").notNull(),
+    details: text("details"),
+    status: reportStatusEnum("status").notNull().default("open"),
+    resolutionNote: text("resolution_note"),
+    handledBy: uuid("handled_by").references(() => users.id),
+    handledAt: ts("handled_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("abuse_reports_status_idx").on(t.status, t.createdAt),
+    uniqueIndex("abuse_reports_one_open_uq").on(t.reporterId, t.targetType, t.targetId).where(sql`${t.status} in ('open', 'reviewing')`),
+  ],
+);
+
+export const interviews = pgTable(
+  "interviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    proposalId: uuid("proposal_id").notNull().references(() => proposals.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull().references(() => users.id),
+    freelancerId: uuid("freelancer_id").notNull().references(() => users.id),
+    startsAt: ts("starts_at").notNull(),
+    durationMinutes: integer("duration_minutes").notNull(),
+    agenda: text("agenda"),
+    status: interviewStatusEnum("status").notNull().default("proposed"),
+    roomName: text("room_name").notNull().unique(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("interviews_client_idx").on(t.clientId, t.startsAt),
+    index("interviews_freelancer_idx").on(t.freelancerId, t.startsAt),
+    check("interviews_duration", sql`${t.durationMinutes} between 15 and 180`),
+  ],
+);
+
+export const interviewEvents = pgTable("interview_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  interviewId: uuid("interview_id").notNull().references(() => interviews.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").references(() => users.id),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status").notNull(),
+  note: text("note"),
+  createdAt: createdAt(),
+});
+
+// ---------- hourly ----------
+export const timesheets = pgTable(
+  "timesheets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    contractId: uuid("contract_id").notNull().references(() => contracts.id, { onDelete: "cascade" }),
+    weekStart: text("week_start").notNull(), // ISO date (Monday, UTC)
+    minutes: integer("minutes").notNull(),
+    amountMinor: money("amount_minor").notNull(),
+    currency: text("currency").notNull(),
+    status: timesheetStatusEnum("status").notNull().default("submitted"),
+    disputeReason: text("dispute_reason"),
+    submittedAt: ts("submitted_at").notNull().defaultNow(),
+    approvedAt: ts("approved_at"),
+    paidAt: ts("paid_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("timesheets_contract_week_uq").on(t.contractId, t.weekStart), check("timesheets_minutes", sql`${t.minutes} > 0`)],
+);
+
+export const timeEntries = pgTable(
+  "time_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    contractId: uuid("contract_id").notNull().references(() => contracts.id, { onDelete: "cascade" }),
+    freelancerId: uuid("freelancer_id").notNull().references(() => users.id),
+    source: timeSourceEnum("source").notNull(),
+    startedAt: ts("started_at").notNull(),
+    endedAt: ts("ended_at"),
+    minutes: integer("minutes"),
+    memo: text("memo").notNull().default(""),
+    timesheetId: uuid("timesheet_id").references(() => timesheets.id),
+    deletedAt: ts("deleted_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("time_entries_contract_idx").on(t.contractId, t.startedAt),
+    // At most one running timer per freelancer.
+    uniqueIndex("time_entries_one_running_uq").on(t.freelancerId).where(sql`${t.endedAt} is null and ${t.deletedAt} is null`),
+    check("time_entries_minutes", sql`${t.minutes} is null or (${t.minutes} > 0 and ${t.minutes} <= 1440)`),
+  ],
+);
+
+export const timeEntryEvents = pgTable("time_entry_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  timeEntryId: uuid("time_entry_id").notNull().references(() => timeEntries.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").references(() => users.id),
+  kind: text("kind").notNull(), // created | edited | deleted | submitted
+  before: jsonb("before").$type<Record<string, unknown>>(),
+  after: jsonb("after").$type<Record<string, unknown>>(),
+  createdAt: createdAt(),
+});
+
+export const timesheetEvents = pgTable("timesheet_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  timesheetId: uuid("timesheet_id").notNull().references(() => timesheets.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").references(() => users.id),
+  actorKind: text("actor_kind").notNull().default("user"),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status").notNull(),
+  note: text("note"),
+  createdAt: createdAt(),
+});
+
+// ---------- services catalog ----------
+export const serviceListings = pgTable(
+  "service_listings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    freelancerId: uuid("freelancer_id").notNull().references(() => users.id),
+    slug: text("slug").notNull().unique(),
+    title: text("title").notNull(),
+    categoryId: uuid("category_id").references(() => categories.id),
+    summary: text("summary").notNull(),
+    description: text("description").notNull(),
+    currency: text("currency").notNull(),
+    maxConcurrentOrders: integer("max_concurrent_orders").notNull().default(3),
+    status: serviceStatusEnum("status").notNull().default("draft"),
+    moderationNote: text("moderation_note"),
+    publishedAt: ts("published_at"),
+    isDemo: boolean("is_demo").notNull().default(false),
+    searchTsv: tsvector("search_tsv").generatedAlwaysAs(
+      sql`setweight(to_tsvector('english', coalesce(title, '')), 'A') || setweight(to_tsvector('english', coalesce(summary, '') || ' ' || coalesce(description, '')), 'B')`,
+    ),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("service_listings_status_idx").on(t.status),
+    index("service_listings_freelancer_idx").on(t.freelancerId),
+    index("service_listings_tsv_idx").using("gin", t.searchTsv),
+    check("service_listings_concurrency", sql`${t.maxConcurrentOrders} between 1 and 50`),
+  ],
+);
+
+export const serviceTiers = pgTable(
+  "service_tiers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    listingId: uuid("listing_id").notNull().references(() => serviceListings.id, { onDelete: "cascade" }),
+    tier: serviceTierEnum("tier").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    priceMinor: money("price_minor").notNull(),
+    deliveryDays: integer("delivery_days").notNull(),
+    revisions: integer("revisions").notNull(),
+  },
+  (t) => [
+    uniqueIndex("service_tiers_uq").on(t.listingId, t.tier),
+    check("service_tiers_price", sql`${t.priceMinor} > 0`),
+    check("service_tiers_days", sql`${t.deliveryDays} between 1 and 90`),
+    check("service_tiers_revisions", sql`${t.revisions} between 0 and 10`),
+  ],
+);
+
+export const serviceAddons = pgTable(
+  "service_addons",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    listingId: uuid("listing_id").notNull().references(() => serviceListings.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    priceMinor: money("price_minor").notNull(),
+    extraDays: integer("extra_days").notNull().default(0),
+  },
+  (t) => [check("service_addons_price", sql`${t.priceMinor} > 0`)],
+);
+
+export const serviceRequirements = pgTable(
+  "service_requirements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    listingId: uuid("listing_id").notNull().references(() => serviceListings.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    prompt: text("prompt").notNull(),
+    required: boolean("required").notNull().default(true),
+  },
+  (t) => [uniqueIndex("service_requirements_seq_uq").on(t.listingId, t.seq)],
+);
+
+export const serviceListingEvents = pgTable("service_listing_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  listingId: uuid("listing_id").notNull().references(() => serviceListings.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").references(() => users.id),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status").notNull(),
+  note: text("note"),
+  createdAt: createdAt(),
+});
+
+export const serviceOrders = pgTable(
+  "service_orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    listingId: uuid("listing_id").notNull().references(() => serviceListings.id),
+    buyerId: uuid("buyer_id").notNull().references(() => users.id),
+    sellerId: uuid("seller_id").notNull().references(() => users.id),
+    title: text("title").notNull(),
+    tier: serviceTierEnum("tier").notNull(),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(), // tier, add-ons, requirements, fee rule
+    currency: text("currency").notNull(),
+    totalMinor: money("total_minor").notNull(),
+    feeRuleSnapshot: jsonb("fee_rule_snapshot").$type<Record<string, unknown>>().notNull(),
+    deliveryDays: integer("delivery_days").notNull(),
+    revisionsAllowed: integer("revisions_allowed").notNull(),
+    revisionsUsed: integer("revisions_used").notNull().default(0),
+    status: orderStatusEnum("status").notNull().default("pending_payment"),
+    paidAt: ts("paid_at"),
+    dueAt: ts("due_at"),
+    completedAt: ts("completed_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("service_orders_buyer_idx").on(t.buyerId, t.status),
+    index("service_orders_seller_idx").on(t.sellerId, t.status),
+    check("service_orders_total", sql`${t.totalMinor} > 0`),
+  ],
+);
+
+export const orderRequirementAnswers = pgTable(
+  "order_requirement_answers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id").notNull().references(() => serviceOrders.id, { onDelete: "cascade" }),
+    prompt: text("prompt").notNull(),
+    answer: text("answer").notNull(),
+    seq: integer("seq").notNull(),
+  },
+  (t) => [uniqueIndex("order_requirement_answers_uq").on(t.orderId, t.seq)],
+);
+
+export const orderDeliveries = pgTable(
+  "order_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id").notNull().references(() => serviceOrders.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    note: text("note").notNull(),
+    revisionNote: text("revision_note"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("order_deliveries_version_uq").on(t.orderId, t.version)],
+);
+
+export const orderEvents = pgTable("order_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orderId: uuid("order_id").notNull().references(() => serviceOrders.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").references(() => users.id),
+  actorKind: text("actor_kind").notNull().default("user"),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status").notNull(),
+  note: text("note"),
+  createdAt: createdAt(),
+});
+
+// ---------- reviews ----------
+export const reviews = pgTable(
+  "reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    contractId: uuid("contract_id").references(() => contracts.id),
+    orderId: uuid("order_id").references(() => serviceOrders.id),
+    reviewerId: uuid("reviewer_id").notNull().references(() => users.id),
+    revieweeId: uuid("reviewee_id").notNull().references(() => users.id),
+    reviewerRole: text("reviewer_role").notNull(), // client | freelancer
+    rating: integer("rating").notNull(),
+    body: text("body").notNull(),
+    visibleAt: ts("visible_at"), // null until both sides submit or the review window closes
+    hiddenByModeration: boolean("hidden_by_moderation").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("reviews_contract_reviewer_uq").on(t.contractId, t.reviewerId).where(sql`${t.contractId} is not null`),
+    uniqueIndex("reviews_order_reviewer_uq").on(t.orderId, t.reviewerId).where(sql`${t.orderId} is not null`),
+    index("reviews_reviewee_idx").on(t.revieweeId, t.visibleAt),
+    check("reviews_rating", sql`${t.rating} between 1 and 5`),
+    check("reviews_one_target", sql`num_nonnulls(${t.contractId}, ${t.orderId}) = 1`),
+    check("reviews_not_self", sql`${t.reviewerId} <> ${t.revieweeId}`),
+  ],
+);
+
+// ---------- agencies ----------
+export const agencies = pgTable("agencies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  ownerId: uuid("owner_id").notNull().references(() => users.id),
+  isPublished: boolean("is_published").notNull().default(false),
+  isDemo: boolean("is_demo").notNull().default(false),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const agencyMembers = pgTable(
+  "agency_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agencyId: uuid("agency_id").notNull().references(() => agencies.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    role: agencyRoleEnum("role").notNull(),
+    joinedAt: createdAt(),
+    removedAt: ts("removed_at"),
+    removedBy: uuid("removed_by").references(() => users.id),
+  },
+  (t) => [
+    uniqueIndex("agency_members_active_uq").on(t.agencyId, t.userId).where(sql`${t.removedAt} is null`),
+    index("agency_members_user_idx").on(t.userId),
+  ],
+);
+
+export const agencyInvitations = pgTable(
+  "agency_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agencyId: uuid("agency_id").notNull().references(() => agencies.id, { onDelete: "cascade" }),
+    inviteeId: uuid("invitee_id").notNull().references(() => users.id),
+    role: agencyRoleEnum("role").notNull(),
+    invitedBy: uuid("invited_by").notNull().references(() => users.id),
+    status: invitationStatusEnum("status").notNull().default("sent"),
+    expiresAt: ts("expires_at").notNull(),
+    respondedAt: ts("responded_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("agency_invitations_open_uq").on(t.agencyId, t.inviteeId).where(sql`${t.status} = 'sent'`)],
+);
+
+// ---------- support, disputes, admin ----------
+export const supportTickets = pgTable(
+  "support_tickets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    subject: text("subject").notNull(),
+    category: ticketCategoryEnum("category").notNull(),
+    status: ticketStatusEnum("status").notNull().default("open"),
+    assignedTo: uuid("assigned_to").references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("support_tickets_user_idx").on(t.userId), index("support_tickets_status_idx").on(t.status, t.updatedAt)],
+);
+
+export const supportMessages = pgTable("support_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ticketId: uuid("ticket_id").notNull().references(() => supportTickets.id, { onDelete: "cascade" }),
+  authorId: uuid("author_id").notNull().references(() => users.id),
+  isStaff: boolean("is_staff").notNull().default(false),
+  body: text("body").notNull(),
+  createdAt: createdAt(),
+});
+
+export const disputes = pgTable(
+  "disputes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    milestoneId: uuid("milestone_id").notNull().references(() => milestones.id),
+    contractId: uuid("contract_id").notNull().references(() => contracts.id),
+    openedBy: uuid("opened_by").notNull().references(() => users.id),
+    reason: text("reason").notNull(),
+    priorMilestoneStatus: text("prior_milestone_status").notNull(),
+    status: disputeStatusEnum("status").notNull().default("open"),
+    resolutionNote: text("resolution_note"),
+    resolvedBy: uuid("resolved_by").references(() => users.id),
+    resolvedAt: ts("resolved_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("disputes_one_open_per_milestone_uq").on(t.milestoneId).where(sql`${t.status} in ('open', 'under_review')`),
+    index("disputes_status_idx").on(t.status),
+  ],
+);
+
+export const disputeEvents = pgTable("dispute_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  disputeId: uuid("dispute_id").notNull().references(() => disputes.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").references(() => users.id),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status").notNull(),
+  note: text("note"),
+  createdAt: createdAt(),
+});
+
+export const adminRoles = pgTable(
+  "admin_roles",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    role: adminRoleEnum("role").notNull(),
+    grantedBy: uuid("granted_by").references(() => users.id),
+    grantedAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.role] })],
+);
+
+/** Fixed-window counters for the DB-backed rate limiter. */
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  windowStart: ts("window_start").notNull(),
+  count: integer("count").notNull(),
+});

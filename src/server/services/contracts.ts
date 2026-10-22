@@ -28,10 +28,13 @@ import {
   milestoneMachine,
   offerMachine,
 } from "@/domain/state-machines";
-import { deliverySchema, offerSchema, parseOrThrow, revisionSchema } from "@/domain/validation";
+import { deliverySchema, hourlyOfferSchema, offerSchema, parseOrThrow, revisionSchema } from "@/domain/validation";
 import { getPaymentProvider, type PaymentProvider } from "../payments";
 import { isUniqueViolation } from "./db-errors";
+import { notify } from "./notifications";
+import { createIntent, postTransaction, registerPaymentHandler } from "./payments";
 import { moveProposal } from "./proposals";
+import { assertNotBlocked } from "./safety";
 
 export const OFFER_TTL_DAYS = 14;
 
@@ -40,6 +43,7 @@ export const OFFER_TTL_DAYS = 14;
 export async function createOffer(db: DB, actor: Actor, raw: unknown) {
   requireCapability(actor, "client");
   requireVerifiedEmail(actor);
+  if (raw && typeof raw === "object" && "hourlyRate" in raw) return createHourlyOffer(db, actor, raw);
   const input = parseOrThrow(offerSchema, raw);
   try {
     return await db.transaction(async (tx) => {
@@ -52,7 +56,8 @@ export async function createOffer(db: DB, actor: Actor, raw: unknown) {
       if (!row || row.job.clientId !== actor.userId) throw new AppError("NOT_FOUND", "Proposal not found");
       assertNotSelf(actor.userId, row.p.freelancerId);
       if (row.job.status === "closed" || row.job.status === "draft") throw new AppError("CONFLICT", "This job is not open for hiring");
-      if (row.job.contractType !== "fixed") throw new AppError("CONFLICT", "Hourly contracts are planned for a later phase; only fixed-price offers are available");
+      if (row.job.contractType !== "fixed") throw new AppError("CONFLICT", "This is an hourly job: send an hourly offer instead");
+      await assertNotBlocked(tx, actor.userId, row.p.freelancerId);
       if (!["submitted", "shortlisted"].includes(row.p.status)) {
         throw new AppError("INVALID_TRANSITION", `Can't send an offer on a ${row.p.status} proposal`);
       }
@@ -95,6 +100,71 @@ export async function createOffer(db: DB, actor: Actor, raw: unknown) {
         .returning();
       await tx.insert(offerEvents).values({ offerId: offer.id, actorId: actor.userId, fromStatus: null, toStatus: "sent" });
       await moveProposal(tx, row.p.id, row.p.status, "offer_sent", actor.userId);
+      await notifyOffer(tx, offer);
+      return offer;
+    });
+  } catch (e) {
+    if (isUniqueViolation(e, "offers_one_open_per_proposal_uq")) throw new AppError("CONFLICT", "An offer is already pending for this proposal");
+    throw e;
+  }
+}
+
+async function notifyOffer(tx: Executor, offer: typeof offers.$inferSelect) {
+  await notify(tx, { userId: offer.freelancerId, category: "contracts", kind: "offer.received", title: `New offer: ${offer.title}`, body: "Review the terms and accept or decline.", link: `/app/offers/${offer.id}`, dedupeKey: `offer.received:${offer.id}` });
+}
+
+/** Hourly offer: agreed rate, weekly limit (cap on billable hours) and whether manual time is allowed. */
+async function createHourlyOffer(db: DB, actor: Actor, raw: unknown) {
+  const input = parseOrThrow(hourlyOfferSchema, raw);
+  try {
+    return await db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ p: proposals, job: jobs })
+        .from(proposals)
+        .innerJoin(jobs, eq(jobs.id, proposals.jobId))
+        .where(eq(proposals.id, input.proposalId))
+        .for("update", { of: proposals });
+      if (!row || row.job.clientId !== actor.userId) throw new AppError("NOT_FOUND", "Proposal not found");
+      assertNotSelf(actor.userId, row.p.freelancerId);
+      if (row.job.status === "closed" || row.job.status === "draft") throw new AppError("CONFLICT", "This job is not open for hiring");
+      if (row.job.contractType !== "hourly") throw new AppError("CONFLICT", "This is a fixed-price job: send a milestone offer instead");
+      if (!["submitted", "shortlisted"].includes(row.p.status)) throw new AppError("INVALID_TRANSITION", `Can't send an offer on a ${row.p.status} proposal`);
+      await assertNotBlocked(tx, actor.userId, row.p.freelancerId);
+      const currency = row.job.currency;
+      if (!isCurrency(currency)) throw new AppError("VALIDATION", "Unsupported currency");
+      const hourlyRateMinor = toMinor(input.hourlyRate, currency);
+      const weeklyLimitMinutes = input.weeklyLimitHours * 60;
+      const totalMinor = hourlyRateMinor * input.weeklyLimitHours; // maximum billable per week
+      const [fee] = await tx.select().from(platformFeeRules).where(eq(platformFeeRules.isActive, true)).orderBy(desc(platformFeeRules.version)).limit(1);
+      if (!fee) throw new AppError("CONFLICT", "No active platform fee rule is configured");
+      const expiresAt = new Date(Date.now() + OFFER_TTL_DAYS * 86400_000);
+      const termsSnapshot = {
+        parties: { clientId: actor.userId, freelancerId: row.p.freelancerId },
+        title: input.title,
+        description: input.description,
+        contractType: "hourly",
+        currency,
+        hourlyRateMinor,
+        weeklyLimitMinutes,
+        allowManualTime: input.allowManualTime,
+        maxWeeklyMinor: totalMinor,
+        feeRule: { id: fee.id, version: fee.version, freelancerFeeBps: fee.freelancerFeeBps, clientFeeBps: fee.clientFeeBps },
+        paymentMode: getPaymentProvider().mode,
+        policies: {
+          timesheets: "Weekly timesheets (Mon–Sun, UTC). Client approves or disputes each submitted week; approved weeks are paid through the payment provider.",
+          tracking: "Web timer records start/stop only while the freelancer runs it. No screenshots, keystrokes or activity monitoring.",
+          manualTime: input.allowManualTime ? "Manual entries allowed and labelled as manual." : "Manual entries not allowed.",
+          terms: "WorkSpring draft terms v0 (not legal advice)",
+        },
+        expiresAt: expiresAt.toISOString(),
+      };
+      const [offer] = await tx
+        .insert(offers)
+        .values({ proposalId: row.p.id, jobId: row.job.id, clientId: actor.userId, freelancerId: row.p.freelancerId, title: input.title, description: input.description, contractType: "hourly", currency, totalMinor, hourlyRateMinor, weeklyLimitMinutes, allowManualTime: input.allowManualTime, termsSnapshot, feeRuleId: fee.id, expiresAt })
+        .returning();
+      await tx.insert(offerEvents).values({ offerId: offer.id, actorId: actor.userId, fromStatus: null, toStatus: "sent" });
+      await moveProposal(tx, row.p.id, row.p.status, "offer_sent", actor.userId);
+      await notifyOffer(tx, offer);
       return offer;
     });
   } catch (e) {
@@ -158,7 +228,7 @@ export async function acceptOffer(db: DB, actor: Actor, offerId: string) {
       if (proposal.status !== "offer_sent") throw new AppError("INVALID_TRANSITION", `Proposal is ${proposal.status}; the offer can no longer be accepted`);
 
       await setOfferStatus(tx, offer, "accepted", actor.userId);
-      const snap = offer.termsSnapshot as { milestones: { seq: number; title: string; amountMinor: number; dueDate: string | null }[]; feeRule: Record<string, unknown> };
+      const snap = offer.termsSnapshot as { milestones?: { seq: number; title: string; amountMinor: number; dueDate: string | null }[]; feeRule: Record<string, unknown> };
       const [contract] = await tx
         .insert(contracts)
         .values({
@@ -172,13 +242,19 @@ export async function acceptOffer(db: DB, actor: Actor, offerId: string) {
           totalMinor: offer.totalMinor,
           termsSnapshot: offer.termsSnapshot,
           feeRuleSnapshot: snap.feeRule,
+          hourlyRateMinor: offer.hourlyRateMinor,
+          weeklyLimitMinutes: offer.weeklyLimitMinutes,
+          allowManualTime: offer.allowManualTime,
         })
         .returning();
-      const ms = await tx
-        .insert(milestones)
-        .values(snap.milestones.map((m) => ({ contractId: contract.id, seq: m.seq, title: m.title, amountMinor: m.amountMinor, currency: offer.currency, dueDate: m.dueDate })))
-        .returning();
-      await tx.insert(milestoneEvents).values(ms.map((m) => ({ milestoneId: m.id, actorId: actor.userId, fromStatus: null, toStatus: "unfunded" })));
+      if (offer.contractType === "fixed" && snap.milestones?.length) {
+        const ms = await tx
+          .insert(milestones)
+          .values(snap.milestones.map((m) => ({ contractId: contract.id, seq: m.seq, title: m.title, amountMinor: m.amountMinor, currency: offer.currency, dueDate: m.dueDate })))
+          .returning();
+        await tx.insert(milestoneEvents).values(ms.map((m) => ({ milestoneId: m.id, actorId: actor.userId, fromStatus: null, toStatus: "unfunded" })));
+      }
+      await notify(tx, { userId: offer.clientId, category: "contracts", kind: "offer.accepted", title: `Offer accepted: ${offer.title}`, body: "The contract has started.", link: `/app/contracts/${contract.id}`, dedupeKey: `offer.accepted:${offer.id}` });
       await tx.insert(contractEvents).values({ contractId: contract.id, actorId: actor.userId, kind: "contract.started", data: { offerId: offer.id } });
       await moveProposal(tx, proposal.id, "offer_sent", "hired", actor.userId);
       // R1 jobs hire one freelancer: close the job and record who triggered it.
@@ -283,6 +359,7 @@ async function lockMilestone(tx: Executor, actor: Actor, milestoneId: string) {
     .for("update", { of: milestones });
   const role = row ? contractRole(actor, row.c) : null;
   if (!row || !role) throw new AppError("NOT_FOUND", "Milestone not found");
+  if (row.m.status === "disputed" || row.m.status === "refund_pending") throw new AppError("INVALID_TRANSITION", "This milestone is on hold while a dispute is reviewed");
   return { ...row, role };
 }
 
@@ -324,27 +401,9 @@ export async function fundMilestone(db: DB, actor: Actor, milestoneId: string, p
     const siblings = await tx.select({ seq: milestones.seq, status: milestones.status }).from(milestones).where(eq(milestones.contractId, c.id));
     if (!canFundInOrder(m, siblings)) throw new AppError("INVALID_TRANSITION", "Fund earlier milestones first");
     assertTransition(milestoneMachine, m.status, "funding_pending", "milestone");
-    const [{ attempts }] = await tx.execute<{ attempts: number }>(
-      sql`select count(*)::int as attempts from payment_intents where milestone_id = ${m.id} and purpose = 'milestone_funding'`,
-    );
-    const intentId = crypto.randomUUID();
-    const idempotencyKey = `fund:${m.id}:${Number(attempts) + 1}`;
-    const res = await provider.createPayment({ intentId, amountMinor: m.amountMinor, currency: m.currency, idempotencyKey, description: `Milestone ${m.seq}: ${m.title}` });
-    await tx.insert(paymentIntents).values({
-      id: intentId,
-      provider: provider.id,
-      mode: provider.mode,
-      providerRef: res.providerRef,
-      purpose: "milestone_funding",
-      milestoneId: m.id,
-      amountMinor: m.amountMinor,
-      currency: m.currency,
-      status: res.status,
-      idempotencyKey,
-      createdBy: actor.userId,
-    });
+    const { intentId, actionUrl } = await createIntent(tx, provider, { purpose: "milestone_funding", target: { milestoneId: m.id }, amountMinor: m.amountMinor, currency: m.currency, description: `Milestone ${m.seq}: ${m.title}`, createdBy: actor.userId });
     await moveMilestone(tx, m, "funding_pending", { id: actor.userId, kind: "user" }, { intentId, provider: provider.id, mode: provider.mode });
-    return { intentId, actionUrl: res.actionUrl ?? null };
+    return { intentId, actionUrl };
   });
 }
 
@@ -360,6 +419,7 @@ export async function deliverMilestone(db: DB, actor: Actor, milestoneId: string
     );
     const [sub] = await tx.insert(milestoneSubmissions).values({ milestoneId: m.id, version: Number(v), note: input.note, submittedBy: actor.userId }).returning();
     await moveMilestone(tx, m, "submitted", { id: actor.userId, kind: "user" }, { submissionId: sub.id, version: sub.version });
+    await notify(tx, { userId: c.clientId, category: "contracts", kind: "milestone.submitted", title: `Work submitted: ${m.title}`, body: "Review it and approve or request changes.", link: `/app/contracts/${c.id}`, dedupeKey: `milestone.submitted:${sub.id}` });
     return sub;
   });
 }
@@ -374,6 +434,7 @@ export async function requestRevision(db: DB, actor: Actor, milestoneId: string,
     const [latest] = await tx.select().from(milestoneSubmissions).where(eq(milestoneSubmissions.milestoneId, m.id)).orderBy(desc(milestoneSubmissions.version)).limit(1);
     await tx.insert(revisionRequests).values({ milestoneId: m.id, submissionId: latest.id, note: input.note, requestedBy: actor.userId });
     await moveMilestone(tx, m, "revision_requested", { id: actor.userId, kind: "user" }, { submissionVersion: latest.version });
+    await notify(tx, { userId: c.freelancerId, category: "contracts", kind: "milestone.revision", title: `Changes requested: ${m.title}`, body: input.note.slice(0, 200), link: `/app/contracts/${c.id}`, dedupeKey: `milestone.revision:${m.id}:${latest.version}` });
   });
 }
 
@@ -400,26 +461,7 @@ export async function requestRelease(db: DB, actor: Actor, milestoneId: string, 
     assertTransition(milestoneMachine, m.status, "release_pending", "milestone");
     const fee = c.feeRuleSnapshot as { freelancerFeeBps: number };
     const split = splitRelease(m.amountMinor, fee.freelancerFeeBps);
-    const [{ attempts }] = await tx.execute<{ attempts: number }>(
-      sql`select count(*)::int as attempts from payment_intents where milestone_id = ${m.id} and purpose = 'milestone_release'`,
-    );
-    const intentId = crypto.randomUUID();
-    const idempotencyKey = `release:${m.id}:${Number(attempts) + 1}`;
-    const res = await provider.createTransfer({ intentId, amountMinor: split.netMinor, currency: m.currency, idempotencyKey, description: `Release milestone ${m.seq}` });
-    await tx.insert(paymentIntents).values({
-      id: intentId,
-      provider: provider.id,
-      mode: provider.mode,
-      providerRef: res.providerRef,
-      purpose: "milestone_release",
-      milestoneId: m.id,
-      amountMinor: m.amountMinor, // gross; the transfer itself is netMinor
-      feeMinor: split.feeMinor,
-      currency: m.currency,
-      status: res.status,
-      idempotencyKey,
-      createdBy: actor.userId,
-    });
+    const { intentId } = await createIntent(tx, provider, { purpose: "milestone_release", target: { milestoneId: m.id }, amountMinor: m.amountMinor, feeMinor: split.feeMinor, currency: m.currency, description: `Release milestone ${m.seq}`, createdBy: actor.userId });
     await moveMilestone(tx, m, "release_pending", { id: actor.userId, kind: "user" }, { intentId, ...split });
     return { intentId, ...split };
   });
@@ -436,3 +478,40 @@ export async function completeContractIfDone(tx: Executor, contractId: string) {
   await tx.insert(contractEvents).values({ contractId, actorId: null, kind: "contract.completed", data: { reason: "all milestones released" } });
   return true;
 }
+
+// ---------------------------------------------------------------- provider outcomes (registered with payments)
+
+registerPaymentHandler("milestone_funding", async (tx, intent, succeeded, event) => {
+  const [m] = await tx.select().from(milestones).where(eq(milestones.id, intent.milestoneId!)).for("update");
+  const [c] = await tx.select().from(contracts).where(eq(contracts.id, m.contractId));
+  const actor = { id: null, kind: "provider_webhook" as const };
+  if (succeeded) {
+    await moveMilestone(tx, m, "funded", actor, { eventId: event.id, intentId: intent.id });
+    await postTransaction(tx, { mode: intent.mode, currency: intent.currency, contractId: c.id, milestoneId: m.id, paymentIntentId: intent.id, memo: `Milestone ${m.seq} funded (${intent.mode})` }, [
+      { account: "provider_balance", direction: "debit", amountMinor: intent.amountMinor },
+      { account: "milestone_payable", direction: "credit", amountMinor: intent.amountMinor },
+    ]);
+    await notify(tx, { userId: c.freelancerId, category: "payments", kind: "milestone.funded", title: `Milestone funded: ${m.title}`, body: intent.mode === "test" ? "TEST MODE: no real money moved." : undefined, link: `/app/contracts/${c.id}`, dedupeKey: `milestone.funded:${intent.id}` });
+  } else {
+    await moveMilestone(tx, m, "unfunded", actor, { eventId: event.id, reason: event.failureReason ?? null });
+    await notify(tx, { userId: c.clientId, category: "payments", kind: "milestone.funding_failed", title: `Funding failed: ${m.title}`, body: event.failureReason, link: `/app/contracts/${c.id}`, dedupeKey: `milestone.funding_failed:${intent.id}` });
+  }
+});
+
+registerPaymentHandler("milestone_release", async (tx, intent, succeeded, event) => {
+  const [m] = await tx.select().from(milestones).where(eq(milestones.id, intent.milestoneId!)).for("update");
+  const [c] = await tx.select().from(contracts).where(eq(contracts.id, m.contractId));
+  const actor = { id: null, kind: "provider_webhook" as const };
+  if (succeeded) {
+    await moveMilestone(tx, m, "released", actor, { eventId: event.id, intentId: intent.id });
+    await postTransaction(tx, { mode: intent.mode, currency: intent.currency, contractId: c.id, milestoneId: m.id, paymentIntentId: intent.id, memo: `Milestone ${m.seq} released (${intent.mode})` }, [
+      { account: "milestone_payable", direction: "debit", amountMinor: intent.amountMinor },
+      { account: "provider_balance", direction: "credit", amountMinor: intent.amountMinor - intent.feeMinor },
+      { account: "platform_fee_revenue", direction: "credit", amountMinor: intent.feeMinor },
+    ]);
+    await notify(tx, { userId: c.freelancerId, category: "payments", kind: "milestone.released", title: `Payment released: ${m.title}`, body: intent.mode === "test" ? "TEST MODE: no real money moved." : undefined, link: `/app/contracts/${c.id}`, dedupeKey: `milestone.released:${intent.id}` });
+    await completeContractIfDone(tx, c.id);
+  } else {
+    await moveMilestone(tx, m, "approved", actor, { eventId: event.id, reason: event.failureReason ?? null });
+  }
+});

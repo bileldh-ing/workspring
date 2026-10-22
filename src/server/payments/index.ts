@@ -14,6 +14,7 @@ function unconfigured(id: string, reason: string): PaymentProvider {
     unavailableReason: reason,
     createPayment: async () => fail(),
     createTransfer: async () => fail(),
+    createRefund: async () => fail(),
     verifyWebhook: () => fail(),
   };
 }

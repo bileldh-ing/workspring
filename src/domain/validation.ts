@@ -53,6 +53,7 @@ export const jobSchema = z
     scope: z.enum(["small", "medium", "large"]),
     experienceLevel: z.enum(["entry", "intermediate", "expert"]),
     locationNote: z.string().trim().max(200).optional(),
+    screeningQuestions: z.array(z.string().trim().min(5, "Questions need at least 5 characters").max(300)).max(5, "At most 5 screening questions").optional().default([]),
   })
   .refine((v) => !CONTACT_RE.test(v.description), {
     path: ["description"],
@@ -67,6 +68,7 @@ export const proposalSchema = z.object({
   coverLetter: trimmed(50, 5000, "Cover letter"),
   amount,
   durationEstimate: z.enum(["less_than_1_week", "1_to_4_weeks", "1_to_3_months", "3_plus_months"]),
+  answers: z.record(z.string(), z.string().trim().max(2000)).optional().default({}),
 });
 
 export const declineSchema = z.object({ reason: z.string().trim().max(500).optional() });
@@ -87,6 +89,15 @@ export const offerSchema = z.object({
   title: trimmed(5, 120, "Contract title"),
   description: trimmed(20, 5000, "Scope"),
   milestones: z.array(milestoneInput).min(1, "Add at least one milestone").max(10, "At most 10 milestones"),
+});
+
+export const hourlyOfferSchema = z.object({
+  proposalId: z.uuid(),
+  title: trimmed(5, 120, "Contract title"),
+  description: trimmed(20, 5000, "Scope"),
+  hourlyRate: amount,
+  weeklyLimitHours: z.coerce.number().int("Whole hours only").min(1, "At least 1 hour").max(80, "At most 80 hours"),
+  allowManualTime: z.boolean().default(false),
 });
 
 export const messageSchema = z.object({ body: trimmed(1, 5000, "Message") });
@@ -113,6 +124,82 @@ export const talentSearchSchema = z.object({
   page: z.coerce.number().int().min(1).max(500).optional().default(1),
 });
 export type TalentSearch = z.infer<typeof talentSearchSchema>;
+
+const isoDateTime = z.string().trim().refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date and time");
+
+export const invitationSchema = z.object({
+  jobId: z.uuid("Choose a job"),
+  freelancerId: z.uuid(),
+  message: trimmed(10, 2000, "Message"),
+});
+
+export const reportSchema = z.object({
+  targetType: z.enum(["user", "job", "message", "service", "review"]),
+  targetId: z.uuid(),
+  reason: z.enum(["spam", "scam_or_fraud", "harassment", "fake_profile", "inappropriate", "malicious_file", "off_platform_payment", "other"]),
+  details: z.string().trim().max(2000).optional(),
+});
+
+export const interviewSchema = z.object({
+  proposalId: z.uuid(),
+  startsAt: isoDateTime,
+  durationMinutes: z.coerce.number().int().min(15, "At least 15 minutes").max(180, "At most 3 hours"),
+  agenda: z.string().trim().max(1000).optional(),
+});
+
+export const manualTimeSchema = z.object({
+  contractId: z.uuid(),
+  date: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  minutes: z.coerce.number().int("Whole minutes").min(1, "At least 1 minute").max(1440, "At most 24 hours"),
+  memo: trimmed(3, 500, "Memo"),
+});
+
+export const memoSchema = z.object({ memo: z.string().trim().max(500).default("") });
+
+const tierInput = z.object({
+  name: trimmed(2, 60, "Tier name"),
+  description: trimmed(10, 1000, "Tier description"),
+  price: amount,
+  deliveryDays: z.coerce.number().int().min(1, "At least 1 day").max(90, "At most 90 days"),
+  revisions: z.coerce.number().int().min(0).max(10, "At most 10 revisions"),
+});
+
+export const serviceSchema = z.object({
+  title: trimmed(10, 120, "Title"),
+  categorySlug: z.string().trim().min(1, "Choose a category"),
+  summary: trimmed(20, 300, "Summary"),
+  description: trimmed(50, 8000, "Description"),
+  currency,
+  maxConcurrentOrders: z.coerce.number().int().min(1).max(50).default(3),
+  tiers: z.object({ starter: tierInput, standard: tierInput, advanced: tierInput }),
+  addons: z.array(z.object({ name: trimmed(2, 80, "Add-on name"), price: amount, extraDays: z.coerce.number().int().min(0).max(30).default(0) })).max(5).default([]),
+  requirements: z.array(trimmed(5, 300, "Requirement")).max(8).default([]),
+}).refine((v) => !CONTACT_RE.test(v.description), { path: ["description"], message: "Remove email addresses or phone numbers" });
+
+export const orderSchema = z.object({
+  listingId: z.uuid(),
+  tier: z.enum(["starter", "standard", "advanced"]),
+  addonIds: z.array(z.uuid()).max(5).default([]),
+});
+
+export const reviewSchema = z.object({
+  rating: z.coerce.number().int().min(1, "Choose 1–5 stars").max(5, "Choose 1–5 stars"),
+  body: trimmed(10, 2000, "Review"),
+});
+
+export const agencySchema = z.object({
+  name: trimmed(3, 80, "Agency name"),
+  description: trimmed(30, 3000, "Description"),
+});
+
+export const ticketSchema = z.object({
+  subject: trimmed(5, 150, "Subject"),
+  category: z.enum(["account", "payments", "contract", "safety", "technical", "other"]),
+  body: trimmed(10, 5000, "Message"),
+});
+
+export const disputeSchema = z.object({ milestoneId: z.uuid(), reason: trimmed(20, 3000, "Reason") });
+export const resolutionSchema = z.object({ note: trimmed(10, 2000, "Resolution note") });
 
 /** Parses input with a zod schema, throwing a VALIDATION AppError with per-field messages. */
 export function parseOrThrow<T extends z.ZodType>(schema: T, input: unknown): z.infer<T> {

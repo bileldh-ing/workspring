@@ -1,5 +1,5 @@
 /** Provider-neutral payment interfaces. Live providers must implement these; R1 ships a TEST MODE provider only. */
-export type ProviderEventType = "payment.succeeded" | "payment.failed" | "transfer.succeeded" | "transfer.failed";
+export type ProviderEventType = "payment.succeeded" | "payment.failed" | "transfer.succeeded" | "transfer.failed" | "refund.succeeded" | "refund.failed";
 
 export interface ProviderEvent {
   id: string; // provider's unique event id (dedupe key)
@@ -31,6 +31,8 @@ export interface PaymentProvider {
   createPayment(input: CreateMoneyMovement): Promise<{ providerRef: string; status: "requires_action" | "processing"; actionUrl?: string }>;
   /** Move funds to the freelancer (transfer/payout). Outcome arrives by webhook. */
   createTransfer(input: CreateMoneyMovement): Promise<{ providerRef: string; status: "processing" }>;
+  /** Return previously collected funds to the client. Outcome arrives by webhook. */
+  createRefund(input: CreateMoneyMovement & { paymentRef: string | null }): Promise<{ providerRef: string; status: "processing" }>;
   /** Verifies the signature and parses the event. Must throw AppError("BAD_SIGNATURE") on any failure. */
   verifyWebhook(rawBody: string, headers: Headers): ProviderEvent;
 }

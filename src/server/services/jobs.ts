@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { DB, Executor } from "@/db/client";
-import { categories, jobEvents, jobSkills, jobs, skills, users } from "@/db/schema";
+import { categories, jobEvents, jobScreeningQuestions, jobSkills, jobs, proposals, skills, users } from "@/db/schema";
 import { AppError } from "@/domain/errors";
 import { toMinor } from "@/domain/money";
 import { type Actor, requireCapability, requireVerifiedEmail } from "@/domain/permissions";
@@ -35,17 +35,23 @@ async function normalizeJobInput(db: Executor, raw: unknown) {
       locationNote: input.locationNote || null,
     },
     skillIds,
+    questions: input.screeningQuestions ?? [],
   };
+}
+
+export async function screeningQuestionsFor(db: Executor, jobId: string) {
+  return db.select().from(jobScreeningQuestions).where(eq(jobScreeningQuestions.jobId, jobId)).orderBy(jobScreeningQuestions.seq);
 }
 
 export async function createJob(db: DB, actor: Actor, raw: unknown) {
   requireCapability(actor, "client");
-  const { values, skillIds } = await normalizeJobInput(db, raw);
+  const { values, skillIds, questions } = await normalizeJobInput(db, raw);
   return db.transaction(async (tx) => {
     const slug = `${slugify(values.title) || "job"}-${crypto.randomUUID().slice(0, 8)}`;
     const [job] = await tx.insert(jobs).values({ ...values, clientId: actor.userId, slug, status: "draft" }).returning();
     await tx.insert(jobSkills).values(skillIds.map((skillId) => ({ jobId: job.id, skillId })));
     await tx.insert(jobEvents).values({ jobId: job.id, actorId: actor.userId, fromStatus: null, toStatus: "draft" });
+    if (questions.length) await tx.insert(jobScreeningQuestions).values(questions.map((prompt, i) => ({ jobId: job.id, seq: i + 1, prompt })));
     return job;
   });
 }
@@ -60,10 +66,17 @@ async function loadOwnedJob(db: Executor, actor: Actor, jobId: string, lock = fa
 
 export async function updateJob(db: DB, actor: Actor, jobId: string, raw: unknown) {
   requireCapability(actor, "client");
-  const { values, skillIds } = await normalizeJobInput(db, raw);
+  const { values, skillIds, questions } = await normalizeJobInput(db, raw);
   return db.transaction(async (tx) => {
     const job = await loadOwnedJob(tx, actor, jobId, true);
     if (job.status === "closed") throw new AppError("INVALID_TRANSITION", "Closed jobs can't be edited");
+    const existing = (await tx.select().from(jobScreeningQuestions).where(eq(jobScreeningQuestions.jobId, jobId)).orderBy(jobScreeningQuestions.seq)).map((q) => q.prompt);
+    if (JSON.stringify(existing) !== JSON.stringify(questions)) {
+      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(proposals).where(eq(proposals.jobId, jobId));
+      if (Number(n) > 0) throw new AppError("CONFLICT", "Screening questions can't change after proposals have arrived", { screeningQuestions: "Locked: proposals already answered them" });
+      await tx.delete(jobScreeningQuestions).where(eq(jobScreeningQuestions.jobId, jobId));
+      if (questions.length) await tx.insert(jobScreeningQuestions).values(questions.map((prompt, i) => ({ jobId, seq: i + 1, prompt })));
+    }
     await tx.update(jobs).set({ ...values, updatedAt: new Date() }).where(eq(jobs.id, jobId));
     await tx.delete(jobSkills).where(eq(jobSkills.jobId, jobId));
     await tx.insert(jobSkills).values(skillIds.map((skillId) => ({ jobId, skillId })));
@@ -97,7 +110,8 @@ export async function getOwnedJob(db: Executor, actor: Actor, jobId: string) {
   const sk = await jobSkillsFor(db, [job.id]);
   const [cat] = job.categoryId ? await db.select().from(categories).where(eq(categories.id, job.categoryId)) : [];
   const events = await db.select().from(jobEvents).where(eq(jobEvents.jobId, job.id)).orderBy(desc(jobEvents.createdAt));
-  return { ...job, skills: sk.filter((s) => s.jobId === job.id), categorySlug: cat?.slug ?? "", events };
+  const questions = await screeningQuestionsFor(db, job.id);
+  return { ...job, skills: sk.filter((s) => s.jobId === job.id), categorySlug: cat?.slug ?? "", events, questions };
 }
 
 export async function listMyJobs(db: Executor, actor: Actor) {
@@ -131,7 +145,8 @@ export async function getPublicJob(db: Executor, slug: string) {
   const [{ n }] = await db.execute<{ n: number }>(
     sql`select count(*)::int as n from proposals where job_id = ${row.job.id} and status <> 'withdrawn'`,
   );
-  return { ...row.job, clientName: row.clientName, categoryName: row.categoryName, skills: sk, proposalCount: Number(n) };
+  const questions = await screeningQuestionsFor(db, row.job.id);
+  return { ...row.job, clientName: row.clientName, categoryName: row.categoryName, skills: sk, proposalCount: Number(n), questions };
 }
 
 /** Postgres full-text search over OPEN jobs with server-side filters, sorting and pagination. */
