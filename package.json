@@ -37,20 +37,20 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.0",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@vitest/coverage-v8": "5.0.5",
+    "@vitest/coverage-v8": "5.1.0",
     "drizzle-kit": "0.31.11",
     "embedded-postgres": "17.10.0-beta.17",
-    "eslint": "9.39.5",
+    "eslint": "10.14.0",
     "eslint-config-next": "16.4.2",
     "tailwindcss": "4.3.3",
     "tsx": "4.23.15",
-    "typescript": "5.9.3",
-    "vitest": "5.0.5"
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
   },
   "packageManager": "pnpm@12.14.0"
 }
